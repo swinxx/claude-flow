@@ -123,6 +123,8 @@ Goal: kimiflow must **truly understand** the affected code before planning — e
 ## Open unknowns   [NEEDS UNDERSTANDING: …] — resolve plan-blocking ones first.
 ```
 
+**Considered alternatives (`large` scope).** For `large` runs, `RESEARCH.md`/`PLAN.md` records 2–3 candidate approaches and the trade-off that selected the chosen one — guards against tunnel-vision on the first idea. `small`/`trivial` are exempt.
+
 **Mini-gate:** a *plan-blocking* unknown → resolve first, don't plan on assumptions.
 
 ---

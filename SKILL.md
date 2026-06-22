@@ -90,6 +90,7 @@ Delegate to a `general-purpose` planner (or the read-only `Plan` agent + you per
 
 - `PLAN.md`: minimal, aligned with the existing architecture (and project standards); task breakdown; mark each task independent (file-disjoint) or dependent; anchored in `RESEARCH.md`/`DIAGNOSIS.md` (named patterns / verified root cause); no assumption without evidence. For parallel/worktree tasks add a `Consumes:`/`Produces:` interface block (→ reference.md).
 - `ACCEPTANCE.md`: each criterion per template (EARS + concrete input→output + named verification method) with an explicit `AC-N → test_name` link. Lint criteria for vague terms ("fast", "robust") and missing error/edge cases. Trace each to `INTENT.md`/`PROBLEM.md`. In fix mode the central criterion = "the reproduction no longer fails" + no regression.
+- **(large) Considered alternatives:** record 2–3 approaches + the selecting trade-off in `RESEARCH.md`/`PLAN.md` (→ reference.md "Understand & research"). small/trivial skip.
 
 ## 🟡 Phase 4 — Plan-gate (loop, binary, cap 3)
 
