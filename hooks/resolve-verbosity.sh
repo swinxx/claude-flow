@@ -7,6 +7,7 @@
 # Usage:
 #   resolve-verbosity.sh [get] [--flag <level>]      -> echo resolved level word
 #   resolve-verbosity.sh origin   [--flag <level>]   -> echo winning source: flag|project|global|default
+#   resolve-verbosity.sh onboard-check [--flag <level>] -> echo ASK iff origin==default (nothing set), else SKIP
 #   resolve-verbosity.sh set <project|global> <level> -> validate, mkdir -p, write, verify, echo path
 #
 # Precedence (get/origin): flag > project (.kimiflow/verbosity) > global (~/.claude/kimiflow/verbosity) > balanced
@@ -43,7 +44,7 @@ read_level() {
 
 mode="get"
 case "${1:-}" in
-  get|origin|set) mode="$1"; shift ;;
+  get|origin|set|onboard-check) mode="$1"; shift ;;
 esac
 
 # ---- set <project|global> <level> ----
@@ -99,7 +100,12 @@ else
   src="default"; level="balanced"
 fi
 
-if [ "$mode" = "origin" ]; then
+# onboard-check: turn the precedence decision into an imperative token, so the
+# orchestrator never has to evaluate "is it set?" itself — ASK only when nothing
+# is set anywhere (origin==default); any project/global config OR a one-off flag → SKIP.
+if [ "$mode" = "onboard-check" ]; then
+  [ "$src" = "default" ] && printf 'ASK\n' || printf 'SKIP\n'
+elif [ "$mode" = "origin" ]; then
   printf '%s\n' "$src"
 else
   printf '%s\n' "$level"

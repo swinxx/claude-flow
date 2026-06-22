@@ -87,5 +87,23 @@ reset
 out="$(run --flag)"; rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "balanced" ]; then pass "test_flag_missing_value_degrades"; else fail "test_flag_missing_value_degrades (rc=$rc out='$out')"; fi
 
+# --- AC-14: onboard-check → ASK only when nothing is set (origin==default), else SKIP ---
+reset
+assert_eq "$(run onboard-check)" "ASK" "test_onboard_ask_when_unset"
+reset; set_project quiet
+assert_eq "$(run onboard-check)" "SKIP" "test_onboard_skip_project_set"
+reset; set_global verbose
+assert_eq "$(run onboard-check)" "SKIP" "test_onboard_skip_global_set"
+reset
+assert_eq "$(run onboard-check --flag verbose)" "SKIP" "test_onboard_skip_with_flag"
+# onboard-check is read-only — like get/origin it must never persist anything
+reset
+run onboard-check >/dev/null
+if [ -f "$PROJ/.kimiflow/verbosity" ] || [ -f "$FAKE_HOME/.claude/kimiflow/verbosity" ]; then
+  fail "test_onboard_no_persist"
+else
+  pass "test_onboard_no_persist"
+fi
+
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi
