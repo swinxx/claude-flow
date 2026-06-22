@@ -29,6 +29,9 @@ jobs:
       - name: Unit tests (weakening-scan) — hard gate
         run: bash hooks/test-weakening-scan-unit.sh
 
+      - name: Unit tests (test-gate) — hard gate
+        run: bash hooks/test-gate-unit.sh
+
       - name: Validate JSON — hard gate
         run: |
           jq -e . hooks/hooks.json > /dev/null

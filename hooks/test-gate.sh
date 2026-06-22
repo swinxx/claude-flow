@@ -12,6 +12,10 @@ input="$(cat 2>/dev/null || true)"
 if command -v jq >/dev/null 2>&1; then
   active="$(printf '%s' "$input" | jq -r '.stop_hook_active // false' 2>/dev/null || true)"
   [ "$active" = "true" ] && exit 0
+else
+  # No jq: detect the continuation flag with a tolerant grep, so the loop-break still
+  # works and we never re-block forever (jq is recommended — see the block branch below).
+  printf '%s' "$input" | grep -qE '"stop_hook_active"[[:space:]]*:[[:space:]]*true' && exit 0
 fi
 
 # Project dir: prefer the hook's reported cwd, else the current dir.
@@ -47,6 +51,7 @@ tail_out="$(printf '%s' "$out" | tail -n 30)"
 if command -v jq >/dev/null 2>&1; then
   printf '%s' "$tail_out" | jq -Rs '{decision:"block", reason:("kimiflow test-gate: tests are red — fix before finishing.\n\n" + .)}'
 else
-  printf '{"decision":"block","reason":"kimiflow test-gate: tests are red — fix before finishing."}'
+  printf 'kimiflow test-gate: jq not installed — blocking on red tests without the output tail; install jq for detail.\n' >&2
+  printf '{"decision":"block","reason":"kimiflow test-gate: tests are red — fix before finishing (install jq for the failing output)."}'
 fi
 exit 0
