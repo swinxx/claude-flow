@@ -2,6 +2,24 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.1
+
+### Added
+- **Display verbosity** — `quiet` / `balanced` / `verbose` levels that change **only** visible
+  output; the engine (gates, artifacts, evidence, subagents, thresholds) is identical at every
+  level. One-off `--quiet` / `--verbose`, setter `--set-verbosity`, a `--settings` dialog
+  (level + scope), and a one-time first-run prompt (headless/skip → `balanced`, no block).
+  Precedence `flag > project > global > balanced`, resolved by a unit-tested helper
+  (`hooks/resolve-verbosity.sh`). Only verbosity may live globally (`~/.claude/kimiflow/verbosity`).
+
+### Changed
+- **State dir renamed `.flow/` → `.kimiflow/`** (self-documenting).
+- **Fix-mode research** now names `WebSearch` / context7 / `WebFetch` explicitly (parity with the
+  feature path).
+- **Vault research is freshness-aware** — a hit is weighed by its `date:`; a fresh hit that
+  answers the question replaces web research, and re-search uses a **different search vector**
+  rather than repeating a prior query.
+
 ## 0.1.0 — Initial release
 
 > Pre-1.0: early and evolving — interfaces and gate details may change between 0.x versions.
