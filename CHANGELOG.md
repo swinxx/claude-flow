@@ -2,6 +2,29 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.5
+
+### Fixed
+- **commit-secret-gate — suffix-style `.env`:** the secret pattern matched only dotfile `.env`;
+  `prod.env`/`dev.env`/`.envrc`-style names now match too.
+- **commit-secret-gate — combined add+commit:** a `git add <secret> && git commit` in one command
+  now has its add-targets scanned, not just the index.
+- **commit-secret-gate — no-jq fail-closed:** the jq-less detection was quote-fragile, so
+  `git -C "…" commit` / `git -c k="v" commit` slipped through; now denied (quote-robust).
+- **test-gate — no-jq loop-break:** the `stop_hook_active` break now works without jq (grep
+  fallback), so a red marker can no longer re-block forever; a stderr hint recommends jq.
+- SKILL.md YAML frontmatter (`description` quoted) — fixes the GitHub render error.
+
+### Added
+- Unit tests for `commit-secret-gate`, `test-gate`, and the test-weakening scanner, all wired into
+  CI as hard gates. CI now also validates `marketplace.json`.
+
+### Changed
+- Hooks documented as **plugin-mode only**; secret-pattern wording corrected (incl. `.env`/`.envrc`,
+  `access_token`/`auth_token`).
+- Removed build-time external-toolchain references from the published repo; design artifacts moved
+  to `design/`. The audit-mode lens is described in kimiflow's own terms.
+
 ## 0.1.4
 
 ### Added
