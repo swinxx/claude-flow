@@ -112,7 +112,7 @@ Read → reference.md "Review rubric".
 **Default: 1 implementation subagent, sequential.** Full tools, fresh context, inputs `PLAN.md` + `ACCEPTANCE.md` + `INTENT.md`/`PROBLEM.md` (+ `DIAGNOSIS.md`).
 
 - **TDD where sensible:** failing test first (Red) → commit tests before the implementation → green → refactor. In fix mode the reproduction is the Red test. Address the cause, not the symptom.
-- **Surgical:** every changed line traces to plan/intent/diagnosis. Leave foreign code alone, clean your own orphans.
+- **Surgical:** every changed line traces to plan/intent/diagnosis. Leave foreign code alone, clean your own orphans. Every deletion carries a caller-grep proving zero callers (→ reference.md "Code mandate"); no proof → don't delete.
 - **Escalation keyed on the FIRST failure's signal** (failure-stop): a clear test/stack failure → one targeted execution-feedback fix; an unclear / unexpected-API / likely-guess failure → escalate to research immediately (`WebSearch`/context7) — don't burn a blind second attempt. After repeated failure → question the approach/architecture, not just the API. Then stop + ask.
 
 ## 🟤 Phase 6 — Verify against acceptance criteria (goal-backward)

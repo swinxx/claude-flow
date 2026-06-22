@@ -274,6 +274,7 @@ With that file present, the hook runs the command on stop; on failure it blocks 
 - **Scales with the project:** prototype ≠ enterprise layers; a hot path needs performance awareness.
 - **Efficient & elegant:** readable, no needless recomputation in hot paths, clear single-purpose units.
 - **Surgical:** touch only what the request demands; clean up your own orphans; leave foreign code alone.
+- **Deletions are caller-verified (mechanical).** Removing code requires a recorded proof of **zero live callers** — a `grep`/search over `src` (and tests) that returns none, attached to the change. A deletion without that proof is a **code-review BLOCKER**. If something survives the grep but a reviewer judges it load-bearing, record it on a short **do-NOT-touch** list with the reason instead of deleting (anti-hallucination for deletions — a wrong "dead" claim is worse than a missed one).
 
 ---
 
