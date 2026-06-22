@@ -2,6 +2,18 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.10
+
+### Added
+- **Opt-in `🧭 Explore` phase (`--explore`).** A divergent front-end that runs *before* the
+  convergent Phase 1 Clarify: 2–3 codebase-grounded explorer subagents each propose a **distinct
+  direction** (minimal / robust / sideways), the orchestrator synthesizes a terse menu, and the user
+  picks one — which then seeds Clarify. Forced with `/kimiflow --explore <idea>`; otherwise kimiflow
+  offers once on an open-ended request (decline / headless → normal routing, never blocks). Pick →
+  continue into the loop, or stop with an `EXPLORE.md` option memo and `--resume` later. Feature-mode
+  only (a fix/cleanup that surfaces → suggests `--fix`/`--audit`). Purely additive — non-explore runs
+  are behaviorally unchanged; no new hook/script (the pick is a human gate).
+
 ## 0.1.9
 
 ### Changed
