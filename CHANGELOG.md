@@ -2,6 +2,26 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.6
+
+### Fixed
+- **commit-secret-gate — compound code filenames:** the keyword deny-list flagged a secret-word
+  wherever it was bounded by `[/._-]`, so the gate's own files (`commit-secret-gate.sh`,
+  `test-commit-secret-gate.sh`) and source files like `secret-manager.ts` were refused — a false
+  positive the "commit from outside a run" hint couldn't resolve. The **trailing** word-boundary now
+  excludes `-`: a secret-word is still caught as a path's trailing token (`client-secret.txt`,
+  `aws-credentials.yml`, `prod-secret.json`) but no longer mid-name. Leading `-` kept; tests added
+  for both directions.
+
+### Changed
+- **resolve-verbosity:** dropped the unused standalone `origin` mode — it was documented and
+  unit-tested but never invoked by the orchestrator (`onboard-check` already encapsulates the sole
+  origin-based decision). `get`/`onboard-check`/`set` unchanged; an `origin` arg now degrades to `get`.
+- Renamed leftover internal `flow_root()` → `git_root()` in commit-secret-gate (flow→kimiflow rename).
+
+### Removed
+- `design/` plans/specs for already-shipped features — trims the published repo (git history retains them).
+
 ## 0.1.5
 
 ### Fixed
