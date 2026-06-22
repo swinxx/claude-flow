@@ -1,6 +1,6 @@
 ---
 name: kimiflow
-description: Feature & bug-fix loop — clarify (plain language) → understand & research / diagnose (memory-first) → plan with testable acceptance criteria → plan-gate (independent reviewers, binary, cap 3) → implement → verify against specs → code-review → commit (stops first). Fix mode proves the problem, verifies the root cause, and researches the correct fix BEFORE fixing. Modes: full run · --prepare · --resume <slug> · --fix · --audit <path>. Manual only via /kimiflow.
+description: "Feature & bug-fix loop — clarify (plain language) → understand & research / diagnose (memory-first) → plan with testable acceptance criteria → plan-gate (independent reviewers, binary, cap 3) → implement → verify against specs → code-review → commit (stops first). Fix mode proves the problem, verifies the root cause, and researches the correct fix BEFORE fixing. Modes: full run · --prepare · --resume <slug> · --fix · --audit <path>. Manual only via /kimiflow."
 disable-model-invocation: true
 argument-hint: <feature-or-bug> [--fix] [--audit <path>] [--prepare] [--quiet|--verbose] [--set-verbosity <level>] [--settings]  ·  --resume <slug>
 ---
