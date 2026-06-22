@@ -17,6 +17,9 @@ jobs:
             bash -n "$f"
           done
 
+      - name: Unit tests (resolve-verbosity) — hard gate
+        run: bash hooks/test-resolve-verbosity.sh
+
       - name: Validate JSON — hard gate
         run: |
           jq -e . hooks/hooks.json > /dev/null
