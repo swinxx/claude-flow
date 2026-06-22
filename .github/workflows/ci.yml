@@ -32,6 +32,9 @@ jobs:
       - name: Unit tests (test-gate) — hard gate
         run: bash hooks/test-gate-unit.sh
 
+      - name: Unit tests (review-gate) — hard gate
+        run: bash hooks/test-resolve-review-gate.sh
+
       - name: Validate JSON — hard gate
         run: |
           jq -e . hooks/hooks.json > /dev/null
