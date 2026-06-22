@@ -230,6 +230,8 @@ Properties: **observable**, **binary** (pass/fail, not "almost"), **bounded**. R
 
 **Coverage check (Phase 4, before the gate):** every criterion → a plan task AND a test; no orphan task without a criterion. Gaps are findings — fix the plan first.
 
+**Task interface block (parallel/worktree tasks).** Each PLAN.md task names `Consumes:` (signatures it uses from earlier tasks) and `Produces:` (exact function names + parameter/return types later tasks rely on). A worktree implementer sees only its own task — this block is how it learns neighbor signatures without shared context. Sequential single-implementer runs may omit it.
+
 Example:
 ```
 AC-1 — When an empty search string is sent, the API shall return HTTP 400.

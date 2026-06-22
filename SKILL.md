@@ -88,7 +88,7 @@ Goal: kimiflow must truly understand the affected code before planning — evide
 
 Delegate to a `general-purpose` planner (or the read-only `Plan` agent + you persist). Inputs: `INTENT.md`+`RESEARCH.md` (or `PROBLEM.md`+`DIAGNOSIS.md`) + project memory. Pass the planner the `${CLAUDE_SKILL_DIR}/reference.md` path + the section names to read (acceptance-criteria template, code mandate) — not verbatim.
 
-- `PLAN.md`: minimal, aligned with the existing architecture (and project standards); task breakdown; mark each task independent (file-disjoint) or dependent; anchored in `RESEARCH.md`/`DIAGNOSIS.md` (named patterns / verified root cause); no assumption without evidence.
+- `PLAN.md`: minimal, aligned with the existing architecture (and project standards); task breakdown; mark each task independent (file-disjoint) or dependent; anchored in `RESEARCH.md`/`DIAGNOSIS.md` (named patterns / verified root cause); no assumption without evidence. For parallel/worktree tasks add a `Consumes:`/`Produces:` interface block (→ reference.md).
 - `ACCEPTANCE.md`: each criterion per template (EARS + concrete input→output + named verification method) with an explicit `AC-N → test_name` link. Lint criteria for vague terms ("fast", "robust") and missing error/edge cases. Trace each to `INTENT.md`/`PROBLEM.md`. In fix mode the central criterion = "the reproduction no longer fails" + no regression.
 
 ## 🟡 Phase 4 — Plan-gate (loop, binary, cap 3)
@@ -138,7 +138,7 @@ Run each check, show real output, prove the goal — details: → reference.md "
 
 > **Display verbosity is NOT a knob.** Always-on, changes only visible output volume — never gates, cost, quality, or behavior. Never couple it to anything gate- or cost-related (→ reference.md "Display verbosity").
 
-- **Parallel implementation (incl. merge):** ≥2 genuinely independent, file-disjoint, small tasks → implementers with `isolation: worktree` (foreground), then sequential rebase/merge (test baseline after each, no octopus), then phase 6.
+- **Parallel implementation (incl. merge):** ≥2 genuinely independent, file-disjoint, small tasks → implementers with `isolation: worktree` (foreground), then sequential rebase/merge (test baseline after each, no octopus), then phase 6. Each parallel task carries its `Consumes:`/`Produces:` block so file-disjoint implementers know neighbor signatures.
 - **Best-of-N with tests:** a hard, fully test-encoded task → build 2–3 candidate implementations in parallel worktrees, keep the one passing the most acceptance + regression tests. Exists only because kimiflow has the test oracle. Counts against the agent budget.
 - **Cross-family reviewer:** route one plan/code reviewer to a different model family (e.g. the `codex` CLI if available) → breaks same-family blind spots.
 - **Multi-run gate:** for `large`/critical, take the reviewer's binary verdict 3× by majority (variance reduction).
