@@ -1,6 +1,6 @@
 ---
 name: kimiflow
-description: Feature & bug-fix loop — clarify (plain language) → understand & research / diagnose (memory-first) → plan with testable acceptance criteria → plan-gate (independent reviewers, binary, cap 3) → implement → verify against specs → code-review → commit (stops first). Fix mode proves the problem, verifies the root cause, and researches the correct fix BEFORE fixing. Modes: full run · --prepare · --resume <slug> · --fix. Manual only via /kimiflow.
+description: Feature & bug-fix loop — clarify (plain language) → understand & research / diagnose (memory-first) → plan with testable acceptance criteria → plan-gate (independent reviewers, binary, cap 3) → implement → verify against specs → code-review → commit (stops first). Fix mode proves the problem, verifies the root cause, and researches the correct fix BEFORE fixing. Modes: full run · --prepare · --resume <slug> · --fix · --audit <path>. Manual only via /kimiflow.
 disable-model-invocation: true
 argument-hint: <feature-or-bug> [--fix] [--audit <path>] [--prepare] [--quiet|--verbose] [--set-verbosity <level>] [--settings]  ·  --resume <slug>
 ---
@@ -71,7 +71,7 @@ Goal: shared understanding BEFORE research/plan. kimiflow clarifies itself (embe
 Goal: kimiflow must truly understand the affected code before planning — evidence-based. Full checklists: → reference.md "Understand & research", "Fix mode", "Project memory & standards".
 
 0. **Project memory first** (cheap, all tiers — `CLAUDE.md` is native, the `.kimiflow` files only if present). Read the project's `CLAUDE.md` and, if present, `.kimiflow/STANDARDS.md` + `.kimiflow/DECISIONS.md` → ground truth for conventions/patterns/past decisions. The `Explore` agent then only fills gaps.
-1. **Vault** (a notes MCP such as Obsidian, if connected): `obsidian_simple_search` on the key terms from `INTENT.md`/`PROBLEM.md`; read hits with their `date:` as context. A fresh hit that answers the question → don't re-research it (the vault entry IS the research). Re-research only if it's stale for a fast-moving topic (old date + lib/security/pricing → verify against the current state) or it doesn't cover the current question → then search a different vector, not the same query. No MCP → note, continue.
+1. **Vault** (a notes MCP such as Obsidian, if connected): `obsidian_simple_search` on the key terms from `INTENT.md`/`PROBLEM.md`/`AUDIT-INTENT.md`; read hits with their `date:` as context. A fresh hit that answers the question → don't re-research it (the vault entry IS the research). Re-research only if it's stale for a fast-moving topic (old date + lib/security/pricing → verify against the current state) or it doesn't cover the current question → then search a different vector, not the same query. No MCP → note, continue.
 
 **Feature → understand & research:**
 2. **Codebase understanding** (read-only, `Explore` agent, input `INTENT.md` + project memory): patterns/conventions to match, integration points, data flow, affected modules, existing tests, risks/assumptions. Back every claim with `file:line`, mark unproven "NOT VERIFIED". Depth by scope.
