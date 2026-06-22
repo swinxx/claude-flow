@@ -23,10 +23,17 @@ jobs:
       - name: Unit tests (resolve-build-gate) — hard gate
         run: bash hooks/test-resolve-build-gate.sh
 
+      - name: Unit tests (commit-secret-gate) — hard gate
+        run: bash hooks/test-commit-secret-gate.sh
+
+      - name: Unit tests (weakening-scan) — hard gate
+        run: bash hooks/test-weakening-scan-unit.sh
+
       - name: Validate JSON — hard gate
         run: |
           jq -e . hooks/hooks.json > /dev/null
           jq -e . .claude-plugin/plugin.json > /dev/null
+          jq -e . .claude-plugin/marketplace.json > /dev/null
 
       - name: ShellCheck (informational)
         run: shellcheck hooks/*.sh || true
