@@ -378,7 +378,128 @@ git commit -m "feat: native phase task-list widget in Phase 0 (complements STATE
 
 ---
 
-### Task 4: Release 0.1.3 (CHANGELOG + version bump)
+### Task 4: A3 — caller-verified deletion gate (ponytail)
+
+**Files:**
+- Modify: `reference.md` ("Code mandate" + "Review rubric")
+- Modify: `SKILL.md` (Phase 5 surgical bullet)
+
+**Interfaces:** none (behavioral rule).
+
+- [ ] **Step 1: reference.md — add the deletion rule to "Code mandate"**
+
+In `reference.md` `## Code mandate`, find the `**Surgical:**` bullet and add a new bullet right after it:
+
+```
+- **Deletions are caller-verified (mechanical).** Removing code requires a recorded proof of **zero live callers** — a `grep`/search over `src` (and tests) that returns none, attached to the change. A deletion without that proof is a **code-review BLOCKER**. If something survives the grep but a reviewer judges it load-bearing, record it on a short **do-NOT-touch** list with the reason instead of deleting (anti-hallucination for deletions — a wrong "dead" claim is worse than a missed one).
+```
+
+- [ ] **Step 2: SKILL.md — Phase 5 surgical bullet references it**
+
+In `SKILL.md` Phase 5, find:
+
+```
+- **Surgical:** every changed line traces to plan/intent/diagnosis. Leave foreign code alone, clean your own orphans.
+```
+
+Replace with:
+
+```
+- **Surgical:** every changed line traces to plan/intent/diagnosis. Leave foreign code alone, clean your own orphans. Every deletion carries a caller-grep proving zero callers (→ reference.md "Code mandate"); no proof → don't delete.
+```
+
+- [ ] **Step 3: Verify**
+
+Run: `grep -c "caller-verified" reference.md` → ≥ 1. Run: `grep -c "caller-grep proving zero callers" SKILL.md` → 1.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add reference.md SKILL.md
+git commit -m "feat: caller-verified deletion gate (zero-caller proof required to delete)"
+```
+
+---
+
+### Task 5: A4 — Consumes/Produces interface block in plans (superpowers)
+
+**Files:**
+- Modify: `reference.md` (new note near the acceptance-criteria/plan guidance)
+- Modify: `SKILL.md` (Phase 3 PLAN.md bullet + Scaling-knobs "Parallel implementation")
+
+**Interfaces:** none (plan-template convention).
+
+- [ ] **Step 1: reference.md — add the interface-block convention**
+
+In `reference.md`, at the end of `## Acceptance-criteria template (Phase 3)` (after the "Coverage check" paragraph, before the trailing `---`), insert:
+
+```
+**Task interface block (parallel/worktree tasks).** Each PLAN.md task names `Consumes:` (signatures it uses from earlier tasks) and `Produces:` (exact function names + parameter/return types later tasks rely on). A worktree implementer sees only its own task — this block is how it learns neighbor signatures without shared context. Sequential single-implementer runs may omit it.
+```
+
+- [ ] **Step 2: SKILL.md — Phase 3 + Parallel-implementation knob reference it**
+
+In `SKILL.md` Phase 3, find the `PLAN.md` bullet:
+
+```
+- `PLAN.md`: minimal, aligned with the existing architecture (and project standards); task breakdown; mark each task independent (file-disjoint) or dependent; anchored in `RESEARCH.md`/`DIAGNOSIS.md` (named patterns / verified root cause); no assumption without evidence.
+```
+
+Append to it (same bullet): ` For parallel/worktree tasks add a \`Consumes:\`/\`Produces:\` interface block (→ reference.md).`
+
+In the Scaling knobs `**Parallel implementation (incl. merge):**` bullet, append: ` Each parallel task carries its \`Consumes:\`/\`Produces:\` block so file-disjoint implementers know neighbor signatures.`
+
+- [ ] **Step 3: Verify**
+
+Run: `grep -c "Consumes:" reference.md SKILL.md` → reference.md ≥ 1, SKILL.md ≥ 1.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add reference.md SKILL.md
+git commit -m "feat: Consumes/Produces interface block for parallel plan tasks"
+```
+
+---
+
+### Task 6: A5 — considered alternatives for large scope (superpowers)
+
+**Files:**
+- Modify: `reference.md` ("Understand & research")
+- Modify: `SKILL.md` (Phase 3)
+
+**Interfaces:** none.
+
+- [ ] **Step 1: reference.md — record alternatives for large**
+
+In `reference.md` `## Understand & research (Phase 2)`, after the `**RESEARCH.md structure:**` code block, add:
+
+```
+**Considered alternatives (`large` scope).** For `large` runs, `RESEARCH.md`/`PLAN.md` records 2–3 candidate approaches and the trade-off that selected the chosen one — guards against tunnel-vision on the first idea. `small`/`trivial` are exempt.
+```
+
+- [ ] **Step 2: SKILL.md — Phase 3 note**
+
+In `SKILL.md` Phase 3, after the `ACCEPTANCE.md` bullet, add a new bullet:
+
+```
+- **(large) Considered alternatives:** record 2–3 approaches + the selecting trade-off in `RESEARCH.md`/`PLAN.md` (→ reference.md "Understand & research"). small/trivial skip.
+```
+
+- [ ] **Step 3: Verify**
+
+Run: `grep -c "Considered alternatives" reference.md SKILL.md` → each ≥ 1.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add reference.md SKILL.md
+git commit -m "feat: large-scope plans record 2-3 considered alternatives"
+```
+
+---
+
+### Task 7: Release 0.1.3 (CHANGELOG + version bump)
 
 **Files:**
 - Modify: `.claude-plugin/plugin.json` (`version`)
@@ -408,6 +529,13 @@ In `CHANGELOG.md`, after the line `Notable changes to **kimiflow**. Versions tra
   unit-tested `hooks/resolve-build-gate.sh`.
 - **Native phase task-list** — Phase 0 creates a glance widget (`TaskCreate`/`TaskUpdate`) of
   the phases being run; complements `STATE.md` and the colored markers, replaces narrated status.
+
+### Changed
+- **Deletions are now caller-verified** — removing code requires a recorded zero-caller proof
+  (`grep`); an unproven deletion is a code-review BLOCKER. Load-bearing-but-removable-looking code
+  goes on a do-NOT-touch list instead.
+- **Plan tasks carry a `Consumes:`/`Produces:` interface block** for parallel/worktree implementers.
+- **`large`-scope plans record 2–3 considered alternatives** + the selecting trade-off.
 
 ```
 
@@ -443,8 +571,11 @@ Expected: both end `ALL GREEN`.
 - B task-list, scope-scaled, complements STATE/markers, (e) precision → Task 3. ✓
 - Self-contained-rule note → Task 2 Step 5. ✓
 - Tests for resolver (default/project/garbage/roundtrip/invalid/no-persist) → Task 1 Step 1. ✓
-- CHANGELOG + version → Task 4. ✓
-- Out-of-scope items are simply absent (no flag, no global, no section config). ✓
+- A3 caller-verified deletion gate → Task 4. ✓
+- A4 `Consumes:`/`Produces:` interface block → Task 5. ✓
+- A5 considered alternatives (large) → Task 6. ✓
+- CHANGELOG + version → Task 7. ✓
+- Out-of-scope items are simply absent (no flag, no global, no section config, no visual companion). ✓
 
 **2. Placeholder scan** — no "TBD/TODO/handle edge cases"; all code shown in full; all insert blocks are literal. ✓
 

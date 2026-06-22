@@ -95,6 +95,18 @@ Zwei UX-Lücken in kimiflow:
 - Konfigurierbare Summary-Sektionen / Styling der Tasklist.
 - Änderung an Qualitäts-Gates, Thresholds oder Engine-Verhalten.
 
+## Runde-2-Adaptionen (superpowers + ponytail)
+
+In diesen Batch aufgenommen (kleine, qualitäts-neutrale Skill-Edits):
+
+- **A3 — Caller-verified deletion gate (ponytail).** Jede Code-Löschung trägt einen Beleg von **null lebenden Callern** — ein `grep`/Suchlauf über `src` (und Tests), der nichts zurückgibt, der Änderung beigelegt. Löschung ohne Beleg = **BLOCKER** im Code-Review. Überlebt etwas den Grep, hält ein Reviewer es aber für load-bearing → auf eine kurze **do-NOT-touch**-Liste mit Begründung statt löschen. Erweitert Surgical-changes von „toten Code nennen" zu „mechanisch belegt löschen"; Anti-Halluzination für Löschungen.
+- **A4 — `Consumes:`/`Produces:`-Interface-Block in PLAN.md-Tasks (superpowers).** Jeder Plan-Task nennt die Signaturen, die er von früheren Tasks nutzt (`Consumes:`) und die exakten Namen/Typen, auf die spätere bauen (`Produces:`). Ein worktree-Implementer sieht nur seinen Task — so lernt er Nachbar-Signaturen ohne geteilten Kontext.
+- **A5 — Considered alternatives bei `large` (superpowers).** Bei `large`-Scope hält RESEARCH.md/PLAN.md 2–3 erwogene Ansätze + den Trade-off fest, der den gewählten begründet. small/trivial ausgenommen.
+
+**In eigene Spec ausgelagert (unabhängiges Subsystem):** **Audit/Cleanup-Modus** — ein dritter Modus neben feature/fix mit der vollen ponytail lens (why-does-this-exist → caller-verified Slices → do-NOT-touch-Listen → `yagni`/`delete`/`shrink`/`stdlib`-Tags → Verify-Gate pro Slice). Zu groß zum Einfalten; eigenes Brainstorming.
+
+**Verworfen (YAGNI):** Visual Companion (kimiflow ist nicht UI-Design-fokussiert); ein separates Design-Doc-für-`large` (der Pre-Build-Gate liefert den Review-Checkpoint schon).
+
 ## Lokalisierung
 
 Die Summary erscheint in der **Sprache des Users** (kimiflow-Prinzip „reply in the user's language"); Code-Identifier, Pfade und Section-Namen bleiben Englisch.
