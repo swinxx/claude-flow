@@ -2,6 +2,25 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.2
+
+### Added
+- **MIT license** — a `LICENSE` file + `license` field in the manifest, so the README's
+  "anyone can install/fork" is actually covered (previously de-facto all-rights-reserved).
+- **CI runs the unit tests** — `hooks/test-resolve-verbosity.sh` is now a hard gate in CI
+  (was `bash -n` + JSON validation + advisory shellcheck only; the green tests were never run).
+- **Artifact-economy rule** — on-disk artifacts (re-read by every subagent each round, the
+  dominant token cost) are written information-dense; density never trades away rigor.
+
+### Changed
+- **First-run onboarding is now mechanical** — `resolve-verbosity.sh onboard-check` decides
+  `ASK`/`SKIP` in the unit-tested script (`ASK` iff no project/global config and no flag), so it
+  fires reliably on a fresh project and never nags a configured one. 0.1.1's prompt was
+  orchestrator-judged and could be silently skipped.
+- **Stale `flow` → `kimiflow`** in the hooks' headers and operator-visible deny/block messages.
+- **SKILL.md / reference.md prose compacted** — decoration removed, telegraphic phrasing;
+  every rule, threshold, path, and acceptance-criteria precision unchanged.
+
 ## 0.1.1
 
 ### Added
