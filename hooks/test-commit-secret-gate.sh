@@ -75,6 +75,12 @@ assert_deny  "git add ."           "bulk_add_dot"
 assert_deny  "git add --all"       "bulk_add_--all"
 assert_allow "git add safe.txt"    "named_add_allowed"
 
+# --- bulk-pattern scoping: a bare `.` pathspec in a DIFFERENT subcommand of the same compound
+# command must NOT be misread as `git add .` (the bulk check is scoped to the add invocation's args) ---
+assert_allow "git add safe.txt && git grep -n foo -- ."       "named_add_then_grep_dot_pathspec"
+assert_allow "git add a.md b.json && git log --oneline -- ."   "named_add_then_log_dot_pathspec"
+assert_deny  "git add foo ."                                   "named_then_dot_is_bulk"
+
 # --- git_sub anchoring: a commit MESSAGE containing "add -A" is not misread as a bulk add ---
 clear_index; stage README.md
 assert_allow 'git commit -m "add -A to parser"' "anchor_commit_msg_not_bulkadd"

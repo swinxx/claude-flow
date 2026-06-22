@@ -53,9 +53,17 @@ root="$(git_root "$cwd")"
 [ -n "$root" ] || exit 0
 [ -d "$root/.kimiflow" ] || exit 0   # scope: kimiflow repos only
 
-# Block bulk add — kimiflow stages only explicitly named paths.
-if git_sub add && printf '%s' "$cmd" | grep -qE '(\s-A\b|\s--all\b|\s\.(\s|$))'; then
-  emit_deny "kimiflow commit-secret-gate: refusing 'git add -A/.' — stage only explicitly named paths (commit hygiene). Add the files you mean by name."
+# Block bulk add — kimiflow stages only explicitly named paths. Scope the bulk-pattern check to the
+# `git add` invocation's OWN args (the segment after `add`, bounded by ;&|), so a bare `.` pathspec
+# in a DIFFERENT subcommand of the same compound command (e.g. `git add foo && git grep -- .`) is
+# not misread as `git add .`.
+if git_sub add; then
+  add_args="$(printf '%s' "$cmd" \
+    | grep -oE "(^|[;&|][[:space:]]*)git( +-[Cc] +[^ ]+| +-[^ ]+)* +add( +[^;&|]+)+" \
+    | sed -E 's/.*[[:space:]]add[[:space:]]+//' || true)"
+  if printf '%s' "$add_args" | grep -qE '(^|[[:space:]])(-A|--all|\.)([[:space:]]|$)'; then
+    emit_deny "kimiflow commit-secret-gate: refusing 'git add -A/.' — stage only explicitly named paths (commit hygiene). Add the files you mean by name."
+  fi
 fi
 
 # On a commit, scan the staged paths for secret-looking files. Also scan any paths
