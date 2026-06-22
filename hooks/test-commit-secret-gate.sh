@@ -68,6 +68,14 @@ assert_allow "git add safe.txt"    "named_add_allowed"
 clear_index; stage README.md
 assert_allow 'git commit -m "add -A to parser"' "anchor_commit_msg_not_bulkadd"
 
+# --- combined `git add <secret> && git commit`: file not yet in index, still caught ---
+clear_index
+assert_deny  "git add prod.env && git commit -m wip"   "bypass_add_commit_suffix_env"
+assert_deny  "git add -f .env && git commit -m wip"     "bypass_add_commit_dotenv_flag"
+assert_deny  "git add a.txt server.pem && git commit -m wip" "bypass_add_commit_multi_target"
+assert_deny  "git add prod.env; git commit -m wip"     "bypass_add_commit_semicolon"
+assert_allow "git add safe.txt && git commit -m wip"    "bypass_add_commit_safe_allowed"
+
 # --- scope: a repo WITHOUT .kimiflow/ is never policed (even with a staged secret) ---
 NOREPO="$WORK/norepo"; git init -q "$NOREPO"; : > "$NOREPO/.env"; git -C "$NOREPO" add -f .env >/dev/null 2>&1
 assert_allow "git commit -m x" "out_of_scope_repo_allowed" "$NOREPO"

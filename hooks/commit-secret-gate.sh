@@ -58,12 +58,24 @@ if git_sub add && printf '%s' "$cmd" | grep -qE '(\s-A\b|\s--all\b|\s\.(\s|$))';
   emit_deny "kimiflow commit-secret-gate: refusing 'git add -A/.' — stage only explicitly named paths (commit hygiene). Add the files you mean by name."
 fi
 
-# On a commit, scan the staged paths for secret-looking files.
+# On a commit, scan the staged paths for secret-looking files. Also scan any paths
+# added by a `git add` in the SAME compound command (e.g. `git add prod.env && git
+# commit`): they are not in the index yet when this PreToolUse hook runs, so the
+# index scan alone would miss them.
 if git_sub commit; then
   staged="$(git -C "$root" diff --cached --name-only 2>/dev/null || true)"
-  [ -n "$staged" ] || exit 0
+  added_now=""
+  if git_sub add; then
+    added_now="$(printf '%s' "$cmd" \
+      | grep -oE "(^|[;&|][[:space:]]*)git( +-[Cc] +[^ ]+| +-[^ ]+)* +add( +[^;&|]+)+" \
+      | sed -E 's/.*[[:space:]]add[[:space:]]+//' \
+      | tr ' ' '\n' \
+      | grep -vE '^(-|[[:space:]]*$)' || true)"
+  fi
+  scan="$(printf '%s\n%s\n' "$staged" "$added_now" | grep -vE '^[[:space:]]*$' || true)"
+  [ -n "$scan" ] || exit 0
   secret_re='(^|/)[^/]*\.env(rc)?(\.|$)|\.(pem|key|p12|pfx|asc)$|(^|/)id_(rsa|dsa|ecdsa|ed25519)$|(^|/)\.(npmrc|pypirc)$|(^|[/._-])(secrets?|credentials?|api[._-]?keys?|access[._-]?tokens?|auth[._-]?tokens?)([/._-]|$)'
-  hits="$(printf '%s\n' "$staged" | grep -iE "$secret_re" || true)"
+  hits="$(printf '%s\n' "$scan" | grep -iE "$secret_re" || true)"
   if [ -n "$hits" ]; then
     emit_deny "$(printf 'kimiflow commit-secret-gate: refusing commit — staged paths look like secrets:\n%s\n\nUnstage them (git restore --staged <path>) or add to .gitignore. False positive? Commit the specific safe files by name from outside a kimiflow run.' "$hits")"
   fi
