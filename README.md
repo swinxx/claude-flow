@@ -17,7 +17,7 @@ A **user-invoked** Claude Code skill+plugin that runs a disciplined **8-phase lo
 
 **Prerequisite:** [`jq`](https://jqlang.github.io/jq/) on your `PATH` — the hooks need it. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and saves reusable findings back, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.flow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
+**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and saves reusable findings back, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.kimiflow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
 
 ### Recommended — plugin (skill **+** hooks)
 
@@ -75,7 +75,7 @@ Gives you `/kimiflow` (auto-discovered, no restart needed) — but **not** the h
 
 Scope-gate (`trivial`/`small`/`large`) → **clarify** (plain-language grill / problem clarification) → **understand & research** resp. **diagnose** (reproduce + prove root cause + research the correct fix *before* fixing) → **plan** with testable EARS acceptance criteria → **plan-gate** (2 independent reviewers, binary no-blocker, cap 3) → **implement** (TDD, sequential by default) → **verify** against the criteria (with evidence) → **code-review** → **commit** (stops for your OK).
 
-State is persisted to `.flow/<slug>/` in the target project (resumable).
+State is persisted to `.kimiflow/<slug>/` in the target project (resumable).
 
 > **Cost:** a `large` run fans out several subagents (reviewers, implementer, verifier, and optional best-of-N / cross-family reviewer) — expect noticeably higher token use. The scope-gate keeps `small`/`trivial` lean (no loop, 0–1 reviewers).
 
@@ -91,16 +91,16 @@ Details in [`reference.md`](reference.md).
 
 ## Hooks (bundled)
 
-kimiflow ships two safety hooks under `hooks/`, **active only in kimiflow repos** (a `.flow/` dir at the git root) so they never touch unrelated projects:
+kimiflow ships two safety hooks under `hooks/`, **active only in kimiflow repos** (a `.kimiflow/` dir at the git root) so they never touch unrelated projects:
 
 - **`commit-secret-gate`** — blocks a `git commit` that would stage a secret (`.env*`, `*.pem/.key`, `id_rsa`, `.npmrc`, `secret`/`token`/`credential` paths) and any bulk `git add -A`/`.`.
-- **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.flow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
+- **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.kimiflow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
 ## Vault memory layer (optional, but recommended)
 
 kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Phase 2 it **searches your vault before researching** (so it never re-researches what you already learned) and **saves reusable findings back** — auto-discovering your vault's own folder/index structure. Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
 
-**Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.flow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
+**Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.kimiflow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
 
 ### Setup — so the vault layer actually works
 
@@ -127,7 +127,7 @@ Ein **user-invoked** Claude-Code-Skill+Plugin, das einen disziplinierten **8-Pha
 
 **Voraussetzung:** [`jq`](https://jqlang.github.io/jq/) im `PATH` — die Hooks brauchen es. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und speichert wiederverwendbare Erkenntnisse zurück, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.flow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
+**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und speichert wiederverwendbare Erkenntnisse zurück, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.kimiflow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
 
 ### Empfohlen — Plugin (Skill **+** Hooks)
 
@@ -185,7 +185,7 @@ Gibt dir `/kimiflow` (automatisch erkannt, kein Neustart nötig) — aber **nich
 
 Scope-Gate (`trivial`/`small`/`large`) → **Klärung** (Grill in einfacher Sprache / Problem-Klärung) → **Verstehen & Recherche** bzw. **Diagnose** (reproduzieren + Root-Cause belegen + korrekten Fix recherchieren *vor* dem Fix) → **Plan** mit testbaren EARS-Akzeptanzkriterien → **Plan-Gate** (2 unabhängige Reviewer, binär kein-Blocker, Cap 3) → **Umsetzung** (TDD, default sequenziell) → **Verifikation** gegen die Kriterien (mit Evidenz) → **Code-Review** → **Commit** (stoppt für dein OK).
 
-State wird nach `.flow/<slug>/` im Zielprojekt persistiert (resume-fähig).
+State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig).
 
 > **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Reviewer, Implementer, Verifier, optional Best-of-N / Cross-Family-Reviewer) — entsprechend höherer Token-Verbrauch. Das Scope-Gate hält `small`/`trivial` schlank (kein Loop, 0–1 Reviewer).
 
@@ -201,16 +201,16 @@ Details in [`reference.md`](reference.md).
 
 ## Hooks (mitgeliefert)
 
-kimiflow bringt zwei Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos aktiv** (ein `.flow/`-Verzeichnis am Git-Root) — also nie in fremden Projekten:
+kimiflow bringt zwei Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos aktiv** (ein `.kimiflow/`-Verzeichnis am Git-Root) — also nie in fremden Projekten:
 
 - **`commit-secret-gate`** — blockt einen `git commit`, der ein Secret stagen würde (`.env*`, `*.pem/.key`, `id_rsa`, `.npmrc`, `secret`/`token`/`credential`-Pfade), sowie jedes Bulk-`git add -A`/`.`.
-- **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.flow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
+- **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.kimiflow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
 
 ## Vault-Memory-Schicht (optional, aber empfohlen)
 
 kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. In Phase 2 **durchsucht es deinen Vault vor dem Recherchieren** (damit es nie neu recherchiert, was du schon gelernt hast) und **speichert wiederverwendbare Erkenntnisse zurück** — wobei es die Ordner-/Index-Struktur deines Vaults selbst erkennt. Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
 
-**Ohne Vault-MCP — nichts bricht.** kimiflow erkennt, dass kein Notes-MCP da ist, **vermerkt es in `STATE.md`, überspringt Vault-Suche + -Save und läuft weiter.** Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.flow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die projektübergreifende Abkürzung fehlt.
+**Ohne Vault-MCP — nichts bricht.** kimiflow erkennt, dass kein Notes-MCP da ist, **vermerkt es in `STATE.md`, überspringt Vault-Suche + -Save und läuft weiter.** Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.kimiflow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die projektübergreifende Abkürzung fehlt.
 
 ### Setup — damit die Vault-Schicht wirklich funktioniert
 

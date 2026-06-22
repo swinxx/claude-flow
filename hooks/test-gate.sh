@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # flow — hard test-gate (opt-in, safe). Blocks finishing while the project's
 # tests are red. NO-OP unless the project opts in via a LOCAL, untracked
-# `.flow/test-gate` (a file whose first line is the test command). A git-TRACKED
+# `.kimiflow/test-gate` (a file whose first line is the test command). A git-TRACKED
 # (committed) marker is REFUSED — its first line is eval'd, so a committed marker
 # from a cloned repo would be a drive-by. Installing flow never gates unrelated work.
 set -u
@@ -21,19 +21,19 @@ if command -v jq >/dev/null 2>&1; then
 fi
 [ -n "$proj" ] && cd "$proj" 2>/dev/null || true
 
-marker=".flow/test-gate"
+marker=".kimiflow/test-gate"
 # No opt-in marker → do nothing (allow stop).
 [ -f "$marker" ] || exit 0
 
 cmd="$(head -n 1 "$marker" 2>/dev/null || true)"
 [ -n "$cmd" ] || exit 0
 
-# Security: only run a LOCAL, untracked marker. A git-TRACKED (committed) `.flow/test-gate`
+# Security: only run a LOCAL, untracked marker. A git-TRACKED (committed) `.kimiflow/test-gate`
 # could be a drive-by from a cloned repo — its first line is eval'd. An untracked marker
 # can only have been created locally (by you or by flow); refuse to run a tracked one.
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
    && git ls-files --error-unmatch "$marker" >/dev/null 2>&1; then
-  printf 'flow test-gate: refusing to run a git-tracked .flow/test-gate (drive-by risk) — keep it local/untracked to enable.\n' >&2
+  printf 'flow test-gate: refusing to run a git-tracked .kimiflow/test-gate (drive-by risk) — keep it local/untracked to enable.\n' >&2
   exit 0
 fi
 

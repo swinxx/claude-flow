@@ -10,7 +10,7 @@ SCRIPT="$(cd "$(dirname "$0")" && pwd)/resolve-verbosity.sh"
 WORK="$(mktemp -d)"
 PROJ="$WORK/proj"          # cwd for project-file resolution (non-git → gitroot falls back to pwd)
 FAKE_HOME="$WORK/home"
-PROJ_FILE_REL=".flow/verbosity"
+PROJ_FILE_REL=".kimiflow/verbosity"
 trap 'rm -rf "$WORK"' EXIT
 
 FAILS=0
@@ -18,7 +18,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
 
 reset() { rm -rf "$PROJ" "$FAKE_HOME"; mkdir -p "$PROJ" "$FAKE_HOME"; }
-set_project() { mkdir -p "$PROJ/.flow"; printf '%s\n' "$1" > "$PROJ/.flow/verbosity"; }
+set_project() { mkdir -p "$PROJ/.kimiflow"; printf '%s\n' "$1" > "$PROJ/.kimiflow/verbosity"; }
 set_global()  { mkdir -p "$FAKE_HOME/.claude/kimiflow"; printf '%s\n' "$1" > "$FAKE_HOME/.claude/kimiflow/verbosity"; }
 run() { ( cd "$PROJ" && HOME="$FAKE_HOME" "$SCRIPT" "$@" ); }
 assert_eq() { if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (got '$1' want '$2')"; fi; }
@@ -50,7 +50,7 @@ if [ -f "$FAKE_HOME/.claude/kimiflow/verbosity" ]; then pass "test_set_global_cr
 assert_eq "$(run)" "verbose" "test_set_global_roundtrip"
 reset
 run set project quiet >/dev/null
-if [ -f "$PROJ/.flow/verbosity" ]; then pass "test_set_project_creates_file"; else fail "test_set_project_creates_file"; fi
+if [ -f "$PROJ/.kimiflow/verbosity" ]; then pass "test_set_project_creates_file"; else fail "test_set_project_creates_file"; fi
 assert_eq "$(run)" "quiet" "test_set_project_roundtrip"
 # invalid level/scope → exit 1, no file
 reset
@@ -76,7 +76,7 @@ assert_eq "$(run origin)" "global" "test_origin_global"
 reset
 run --flag verbose >/dev/null
 run origin --flag verbose >/dev/null
-if [ -f "$PROJ/.flow/verbosity" ] || [ -f "$FAKE_HOME/.claude/kimiflow/verbosity" ]; then
+if [ -f "$PROJ/.kimiflow/verbosity" ] || [ -f "$FAKE_HOME/.claude/kimiflow/verbosity" ]; then
   fail "test_flag_no_persist"
 else
   pass "test_flag_no_persist"

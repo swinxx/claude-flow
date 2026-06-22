@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # flow — commit-secret-gate (PreToolUse, Bash). Blocks a `git commit` that would
 # stage a secret, or a bulk `git add -A` / `git add .`. AUTO-ACTIVE only in flow
-# repos — a `.flow/` directory at the git root — so installing flow never polices
-# unrelated repos. No-op for every non-git command and every repo without `.flow/`.
+# repos — a `.kimiflow/` directory at the git root — so installing flow never polices
+# unrelated repos. No-op for every non-git command and every repo without `.kimiflow/`.
 #
 # Requires `jq` (same dependency as test-gate.sh). Without jq the hook cannot parse
 # the payload to verify staged files, so it FAILS CLOSED: it denies a git add/commit
@@ -33,7 +33,7 @@ if ! command -v jq >/dev/null 2>&1; then
   if printf '%s' "$input" | grep -qE 'git[^"]{0,80}(add|commit)'; then
     cwd="$(printf '%s' "$input" | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
     root="$(flow_root "$cwd")"
-    [ -n "$root" ] && [ -d "$root/.flow" ] && emit_deny "flow commit-secret-gate: jq is not installed — cannot verify staged files for secrets, so this git command is blocked (fail-closed). Install jq (brew install jq / apt-get install jq); jq is also required by flow's test-gate."
+    [ -n "$root" ] && [ -d "$root/.kimiflow" ] && emit_deny "flow commit-secret-gate: jq is not installed — cannot verify staged files for secrets, so this git command is blocked (fail-closed). Install jq (brew install jq / apt-get install jq); jq is also required by flow's test-gate."
   fi
   exit 0
 fi
@@ -51,7 +51,7 @@ git_sub add || git_sub commit || exit 0
 
 root="$(flow_root "$cwd")"
 [ -n "$root" ] || exit 0
-[ -d "$root/.flow" ] || exit 0   # scope: flow repos only
+[ -d "$root/.kimiflow" ] || exit 0   # scope: flow repos only
 
 # Block bulk add — flow stages only explicitly named paths.
 if git_sub add && printf '%s' "$cmd" | grep -qE '(\s-A\b|\s--all\b|\s\.(\s|$))'; then

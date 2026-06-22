@@ -20,11 +20,11 @@ mechanical quality gates.
   fix *before* fixing.
 - **Self-contained** — every gate/threshold lives in the skill + `reference.md`, never in
   a personal/global `CLAUDE.md`.
-- **Bundled hooks** (active only in kimiflow repos — a `.flow/` dir at the git root):
+- **Bundled hooks** (active only in kimiflow repos — a `.kimiflow/` dir at the git root):
   - `commit-secret-gate` (PreToolUse) — blocks staged secrets and bulk `git add -A`/`.`;
     **fails closed without `jq`**.
   - `test-gate` (opt-in Stop hook) — blocks finishing on red tests; runs **only a local,
-    untracked marker** (a committed `.flow/test-gate` is refused — no drive-by `eval`).
+    untracked marker** (a committed `.kimiflow/test-gate` is refused — no drive-by `eval`).
   - `test-weakening-scan` (advisory) — flags deleted tests / added skips / removed
     assertions to a non-gating channel, surfaced at the commit-gate.
 

@@ -9,7 +9,7 @@
 #   resolve-verbosity.sh origin   [--flag <level>]   -> echo winning source: flag|project|global|default
 #   resolve-verbosity.sh set <project|global> <level> -> validate, mkdir -p, write, verify, echo path
 #
-# Precedence (get/origin): flag > project (.flow/verbosity) > global (~/.claude/kimiflow/verbosity) > balanced
+# Precedence (get/origin): flag > project (.kimiflow/verbosity) > global (~/.claude/kimiflow/verbosity) > balanced
 # Self-contained rule: only a single valid level word is ever read/written — a
 # gate/cost line placed in a file is not a valid level and is ignored.
 set -u
@@ -23,7 +23,7 @@ is_valid_level() {
 project_file() {
   local root
   root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-  printf '%s/.flow/verbosity' "$root"
+  printf '%s/.kimiflow/verbosity' "$root"
 }
 
 global_file() {

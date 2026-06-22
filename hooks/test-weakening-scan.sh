@@ -2,7 +2,7 @@
 # flow — test-weakening scan (ADVISORY, never blocks). Invoked by flow in Phase 7
 # (NOT auto-registered as a hook). Scans the staged diff for signs that tests were
 # weakened to go green and prints FLAG advisory lines to stdout. flow routes these
-# to .flow/<slug>/ADVISORIES.md and forces human triage at the commit-gate
+# to .kimiflow/<slug>/ADVISORIES.md and forces human triage at the commit-gate
 # (dismiss = legit refactor, or promote = a real finding).
 #
 # The pattern set is a MINIMUM (see reference.md → "Review rubric"): SEMANTIC

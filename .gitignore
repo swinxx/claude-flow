@@ -2,4 +2,4 @@
 .claude/worktrees/
 
 # kimiflow run state (local only — never committed)
-.flow/
+.kimiflow/
