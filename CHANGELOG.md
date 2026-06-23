@@ -2,6 +2,33 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.13
+
+A hardening pass from a second audit: an exact review-gate cap contract, an optional secret
+content-scan advisory, and an install smoke-test that guards plugin/skill invocation. This release
+also re-syncs the GitHub tag/release, which had lagged at `0.1.0` while the plugin advanced.
+
+### Added
+- **Optional secret content-scan advisory** (`hooks/secret-content-scan.sh`). Complements the
+  path-only `commit-secret-gate` by scanning the **staged content** for in-source secrets via
+  `gitleaks` (else `trufflehog`) when one is installed; findings become `FLAG` advisories in
+  `ADVISORIES.md` for commit-gate triage. **Non-gating**, with a graceful STDERR skip when no scanner
+  is present — the fail-closed path-hygiene gate is untouched. Wired into Phase 7; unit-tested
+  (PATH-mocked) and added to CI.
+- **Install smoke-test** (`hooks/smoke-install.sh`). Structural, runnable without a live Claude Code
+  session: validates the manifests + version consistency, the `SKILL.md` frontmatter
+  (`disable-model-invocation: true`, `user-invocable` not disabled, `name`/`description`/
+  `argument-hint`), the `hooks.json` wiring, and fires `commit-secret-gate` against synthetic
+  PreToolUse stdin. Prints the manual live-CC checklist and references the Claude Code invocation
+  issues it guards (anthropics/claude-code#26251, #22345). CI hard gate.
+
+### Fixed
+- **Review-gate cap fires at the round limit, not one past it.** `resolve-review-gate.sh` flagged
+  `cap-reached` only at `round > cap` (round 4 under `--cap 3`) — one round past the documented
+  "cap 3 reached → stop". Now `round >= cap`: round 3 under `--cap 3` with open findings →
+  `cap-reached`, so a run does **at most 3 review rounds** (was effectively 4). TDD-covered; the
+  reappearance test gets `--cap 5` headroom to keep exercising its own branch.
+
 ## 0.1.12
 
 A self-applied claim/evidence remediation (kimiflow's own `evidence-before-assertion` standard turned
