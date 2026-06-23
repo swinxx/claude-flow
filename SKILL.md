@@ -76,12 +76,12 @@ Goal: shared understanding BEFORE research/plan. kimiflow clarifies itself (embe
 - **Fix → problem clarification:** symptom, expected vs. actual, when/how it occurs (steps, logs, since when, always/intermittent) → write `PROBLEM.md` → **gate** "Did I understand the problem correctly?" (OK to continue).
 - **Audit → scope clarification:** which paths, how aggressive, behavior-preserve constraints, do-NOT-touch hints, "what stays untouched" → write `AUDIT-INTENT.md` (plain language) → **gate** "Is this the right cleanup scope?" (OK to continue).
 
-## 🟣 Phase 2 — Understand & research / diagnose (memory-first → vault → understanding ∥ web → synthesis → save)
+## 🟣 Phase 2 — Understand & research / diagnose (memory-first → recall → understanding ∥ web → synthesis → save)
 
 Goal: kimiflow must truly understand the affected code before planning — evidence-based. Full checklists: → reference.md "Understand & research", "Fix mode", "Project memory & standards".
 
 0. **Project memory first** (cheap, all tiers — `CLAUDE.md` is native, the `.kimiflow` files only if present). Read the project's `CLAUDE.md` and, if present, `.kimiflow/STANDARDS.md` + `.kimiflow/DECISIONS.md` → ground truth for conventions/patterns/past decisions. The `Explore` agent then only fills gaps.
-1. **Vault** (notes MCP such as Obsidian, if connected): `obsidian_simple_search` on the key terms from `INTENT.md`/`PROBLEM.md`/`AUDIT-INTENT.md`; read hits by their `date:`. A fresh hit that answers the question replaces web research; re-research only a stale or uncovered hit, and then with a different search vector. No MCP → note, continue. → reference.md "Vault conventions".
+1. **Recall before researching** (optional memory providers — each: present → use, absent → note in STATE + continue). Search the key terms from `INTENT.md`/`PROBLEM.md`/`AUDIT-INTENT.md` against whichever are connected: **vault** (notes MCP, e.g. `obsidian_simple_search`) and **claude-mem** (cross-session memory MCP, e.g. `memory_search`/`observation_search`, **search-only**). A fresh relevant hit from either *replaces* web research; re-research only a stale/uncovered hit, with a different vector. → reference.md "Memory recall".
 
 **Feature → understand & research:**
 2. **Codebase understanding** (read-only, `Explore` agent, input `INTENT.md` + project memory) → the checklist in reference.md "Understand & research". Back every claim with `file:line`; unproven → "NOT VERIFIED". Depth by scope.
@@ -91,7 +91,7 @@ Goal: kimiflow must truly understand the affected code before planning — evide
 **Fix → understand & diagnose** (prove first, then fix):
 2. **Reproduce** — actually trigger the bug, ideally a failing test (proof: real + where). Not reproducible = a finding → clarify with the user, don't fix blindly.
 3. **Verify the root cause** (input `PROBLEM.md`) — find AND prove the cause (`file:line` + why that spot produces the symptom). NOT the first guess.
-4. **Fix research (proactive, BEFORE the fix)** — how is this *currently* solved correctly? Vault → `WebSearch`/context7/`WebFetch` → official docs/issues; check the obvious guess against the current state, discard stale/naive approaches. → reference.md "Fix mode".
+4. **Fix research (proactive, BEFORE the fix)** — how is this *currently* solved correctly? Recall (vault/claude-mem) → `WebSearch`/context7/`WebFetch` → official docs/issues; check the obvious guess against the current state, discard stale/naive approaches. → reference.md "Fix mode".
 5. **Synthesis → `DIAGNOSIS.md`** (→ reference.md "Fix mode"). **Diagnosis gate:** root cause not proven → do NOT fix (keep investigating or stop + ask).
 
 **Audit → find the fat** (read-only, evidence-based):

@@ -273,6 +273,27 @@ Keep all three **flat markdown and short**. This is the lightweight version of s
 
 ---
 
+## Memory recall (Phase 2)
+
+Before researching, search whatever **optional memory providers** are connected — recall beats
+re-research. Each is independent and **graceful**: present → use, absent → note in STATE.md + continue
+(the skill runs identically either way; no provider is ever required).
+
+- **Vault** (notes MCP, e.g. Obsidian) — curated research notes. Searched here; **also saved back** at
+  Phase 2's end (see "Vault conventions" below).
+- **claude-mem** (cross-session memory plugin, if its search MCP is present — e.g. `memory_search` /
+  `observation_search` / `smart_search`) — past observations/decisions across sessions. **Search-only:**
+  kimiflow recalls from it but does not write to it (claude-mem auto-captures sessions; verified findings
+  are saved to the vault, not duplicated here).
+
+Query the key terms from `INTENT.md`/`PROBLEM.md`/`AUDIT-INTENT.md` against each present provider; a
+fresh, relevant hit from any **replaces** web research; re-research only a stale/uncovered hit, with a
+different vector. **Detection is per-run, by tool availability** (don't hard-pin a brittle MCP name): a
+later-added provider is used automatically on the **next run**, once its MCP is loaded in the session
+(restart / `/reload-plugins` after install). None present → codebase + web, unchanged.
+
+---
+
 ## Vault conventions (Phase 2)
 
 The vault is an **optional** notes MCP (e.g. Obsidian — `obsidian_simple_search`, `obsidian_get_file_contents`, `obsidian_append_content`). **No vault MCP → skip, note in STATE.md** — the repo-local `.kimiflow/` memory still works. Notes follow the **user's language**, never a fixed one.

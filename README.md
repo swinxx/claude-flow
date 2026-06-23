@@ -146,6 +146,8 @@ kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Pha
 
 **Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.kimiflow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
 
+**Second optional source — claude-mem.** If the **claude-mem** plugin (cross-session memory) is installed, kimiflow *also* searches it during Phase 2 recall ("did we already deal with this?") — **search-only**; saving still goes to the vault / repo-local `.kimiflow/` memory. Not installed → skipped, exactly like the vault. **Detection is per-run**, so adding it later is picked up on the next run (after a `/reload-plugins` or restart). The two are independent — either, both, or neither.
+
 ### Setup — so the vault layer actually works
 
 1. **Install Obsidian:** <https://obsidian.md> — open or create a vault.
@@ -299,6 +301,8 @@ kimiflow bringt zwei Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Rep
 kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. In Phase 2 **durchsucht es deinen Vault vor dem Recherchieren** (damit es nie neu recherchiert, was du schon gelernt hast) und **speichert wiederverwendbare Erkenntnisse zurück** — wobei es die Ordner-/Index-Struktur deines Vaults selbst erkennt. Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
 
 **Ohne Vault-MCP — nichts bricht.** kimiflow erkennt, dass kein Notes-MCP da ist, **vermerkt es in `STATE.md`, überspringt Vault-Suche + -Save und läuft weiter.** Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.kimiflow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die projektübergreifende Abkürzung fehlt.
+
+**Zweite optionale Quelle — claude-mem.** Ist das **claude-mem**-Plugin (cross-session Memory) installiert, durchsucht kimiflow es in Phase 2 **zusätzlich** beim Recall ("hatten wir das schon mal?") — **nur lesend**; gespeichert wird weiterhin in den Vault / die repo-lokale `.kimiflow/`-Memory. Nicht installiert → übersprungen, exakt wie der Vault. **Erkennung pro Run**, ein späteres Nachrüsten wird also beim nächsten Lauf erkannt (nach `/reload-plugins` oder Neustart). Beide sind unabhängig — eines, beides oder keines.
 
 ### Setup — damit die Vault-Schicht wirklich funktioniert
 
