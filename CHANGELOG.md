@@ -2,6 +2,27 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.16
+
+Add **claude-mem** as a second *optional* memory-recall provider in Phase 2, alongside the Obsidian
+vault. Recall beats re-research: kimiflow now searches cross-session memory too, when it's present.
+**Documentation/contract only — no new hook, script, CI, or gate logic; no hard dependency.**
+
+### Changed
+- **Phase 2 recall is now provider-agnostic** (`SKILL.md`, `reference.md`). Step 1 ("Recall before
+  researching") searches whichever optional providers are connected — the **vault** (notes MCP, e.g.
+  Obsidian) and **claude-mem** (cross-session memory MCP, e.g. `memory_search`/`observation_search`).
+  Each is independent and graceful: present → use, absent → note in `STATE.md` + continue. A fresh
+  relevant hit from either replaces web research. Detection is **per-run by tool availability**, so a
+  later-installed provider is picked up on the next run.
+- **claude-mem is search-only.** kimiflow recalls from it but never writes to it (it auto-captures
+  sessions); verified findings still save to the vault. The "Always last — vault-save" step is
+  unchanged.
+- **New `reference.md` "Memory recall (Phase 2)"** section documents the two optional providers, the
+  graceful-skip contract, and per-run detection. "Vault conventions" stays for vault save-back.
+- **README** ("Vault memory layer" / "Vault-Memory-Schicht", EN + DE) names claude-mem as the second
+  optional source — search-only, graceful skip, independent of the vault.
+
 ## 0.1.15
 
 Make STATE-persistence **enforced**, not a prose ask the orchestrator can rationalize past — closing a
