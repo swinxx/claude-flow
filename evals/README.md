@@ -26,6 +26,16 @@ Strengthen the skill per `testing-skills-with-subagents`: an explicit negation i
 rationalization-table entry (+ a red-flag / description symptom if needed). Re-run to confirm GREEN.
 Keep `SKILL.md` spine-terse — push detail to `reference.md`.
 
+## Known limitation — the ambient-CLAUDE.md confound
+Eval subagents run as Claude Code agents, so they inherit the **user's global `CLAUDE.md`**, which may
+independently enforce some of the same disciplines (commit hygiene, root-cause-before-fix,
+anti-hallucination). When a subagent holds such a gate and cites `CLAUDE.md` rather than a kimiflow
+rule, the run does **not** prove kimiflow's own text held it — `CLAUDE.md` would have held it anyway.
+The first run (2026-06-23) saw exactly this on scenarios 01/02/04. To attribute a hold to the skill:
+prefer **kimiflow-unique** gates (e.g. 03 plan-gate cap / anti-oscillation — no `CLAUDE.md` analogue),
+require the citation to name a `SKILL.md`/`reference.md` location, and/or run the eval subagent in an
+environment without the user's `CLAUDE.md`.
+
 ## Scenarios
 | # | Gate | Phase |
 |---|------|-------|
