@@ -2,6 +2,17 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.11
+
+### Added
+- **Behavioral-eval tier (`evals/`, out-of-CI, on-demand).** A subagent pressure-test suite for the
+  six highest-stakes gates (commit-gate, diagnosis-before-fix, plan-gate cap/anti-oscillation,
+  deletion caller-verification, evidence-before-assertion, anti-hallucination). Each scenario loads a
+  fresh subagent with the real deployed skill and a multi-pressure situation, then checks whether the
+  gate holds and is cited — the `testing-skills-with-subagents` (TDD-for-process-docs) tier. LLM-judged
+  and variant by design, so never wired into CI; a one-line Scaling-knobs pointer makes it
+  discoverable. First run: 6/6 gates held under pressure (0 cracks).
+
 ## 0.1.10
 
 ### Added
