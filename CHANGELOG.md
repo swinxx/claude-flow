@@ -2,6 +2,25 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.20
+
+Make kimiflow **model-invocable (opt-in)** instead of hard-blocked. Previously `disable-model-invocation:
+true` meant the assistant could not launch kimiflow at all — even when you asked it to ("run this with
+kimiflow"); only the human typing `/kimiflow` worked. **Docs/contract only — no engine change.**
+
+### Changed
+- **`SKILL.md` frontmatter:** `disable-model-invocation: true` → `false`. The assistant can now launch
+  kimiflow **on request**. The "only when asked, never unprompted" policy moved into the `description`
+  (lead clause), so it's **opt-in by judgment, not a hard flag**. `/kimiflow` slash invocation is
+  unchanged.
+- **Honest trade-off, documented** (`README.md` EN+DE, `COMPATIBILITY.md`): the no-unprompted-trigger
+  guarantee is now **soft** (description-guided), not mechanically enforced. Anyone who wants the hard
+  guarantee back can set `disable-model-invocation: true`. `hooks/smoke-install.sh` now asserts
+  model-invocation is enabled (not `true`) and rewords the manual no-auto-trigger check accordingly.
+
+> **Takes effect after you update the installed plugin and restart** — a running session keeps the
+> frontmatter it loaded at startup.
+
 ## 0.1.19
 
 Close the pre-existing literal-TAB gap in `commit-secret-gate` (the LOW from 0.1.18's review).
