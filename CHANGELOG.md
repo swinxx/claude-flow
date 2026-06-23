@@ -11,7 +11,9 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
   fresh subagent with the real deployed skill and a multi-pressure situation, then checks whether the
   gate holds and is cited — the `testing-skills-with-subagents` (TDD-for-process-docs) tier. LLM-judged
   and variant by design, so never wired into CI; a one-line Scaling-knobs pointer makes it
-  discoverable. First run: 6/6 gates held under pressure (0 cracks).
+  discoverable. First run (2026-06-23): 6/6 held, but only 3/6 (03/05/06) are cleanly attributable
+  to kimiflow's own text — 01/02/04 were confounded by the ambient global `CLAUDE.md` (see
+  `evals/README.md` → "Known limitation"). Treat as a smoke pass, not a robustness proof.
 
 ## 0.1.10
 

@@ -9,9 +9,13 @@
 
 # kimiflow — Feature & Fix Loop (Claude Code skill + plugin)
 
-A **user-invoked** Claude Code skill+plugin that runs a disciplined **8-phase loop** for **building features** and **fixing bugs**: clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review → commit. Every gate is **binary and mechanical** — reviewers write structured findings to files and the gate counts the open blockers itself (and **fails closed**), so "done" is enforced, not self-reported. In **fix mode** it reproduces the bug and **proves the root cause before touching code**. It ships safety hooks (a secret-commit gate + a drive-by-safe test-gate), is **scope-gated** so small tasks stay lean, and **replies in the language you write in**.
+A **user-invoked** Claude Code skill+plugin that runs a disciplined **8-phase loop** for **building features** and **fixing bugs**: clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review → commit. Every gate is **binary and mechanical** — reviewers write structured findings to files and the gate counts the open blockers itself (and **fails closed**), so a "done" self-report can't inflate past open blockers (the gate is mechanical over the findings — not a proof the findings are complete). In **fix mode** it reproduces the bug and **proves the root cause before touching code**. It ships safety hooks (a secret-commit gate + a drive-by-safe test-gate), is **scope-gated** so small tasks stay lean, and **replies in the language you write in**.
 
 > `SKILL.md` / `reference.md` are written in English. **kimiflow replies in the language you write in** — write in German and it grills/answers in German.
+
+## Why kimiflow over plan-mode + a `CLAUDE.md`?
+
+Claude Code's native plan-mode, subagents and hooks cover a lot — so why a skill? Because a prose `CLAUDE.md` *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't talk its way past them. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. A `CLAUDE.md` is advice; these are mechanisms. (kimiflow happily *uses* your `CLAUDE.md` as a conventions hint — it just never relies on it for a gate.)
 
 ## Install
 
