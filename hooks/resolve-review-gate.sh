@@ -59,7 +59,7 @@ done
 [ "$open_count" -eq 0 ] && emit OPEN 0 clean
 
 # ---- open_count > 0: anti-oscillation (cap → oscillation → reappeared → open-findings) ----
-[ "$round" -gt "$cap" ] && emit CLOSED "$open_count" cap-reached "round ${round} > cap ${cap}"
+[ "$round" -ge "$cap" ] && emit CLOSED "$open_count" cap-reached "round ${round} >= cap ${cap}"
 
 prev=$((round - 1))
 prev_exists=false

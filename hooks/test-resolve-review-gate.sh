@@ -73,7 +73,7 @@ FINDING HIGH src/b:2 :: y"
 put r2-B.md "FINDING HIGH src/b:2 :: y
 FINDING HIGH src/c:3 :: z"
 put r3-B.md "FINDING HIGH src/a:1 :: x"
-af "$(run --round 3 --expect B)" 3 reappeared "reappeared_isolated"
+af "$(run --round 3 --expect B --cap 5)" 3 reappeared "reappeared_isolated"
 # cap reached with open findings → CLOSED cap-reached
 reset
 put r1-B.md "FINDING HIGH src/a:1 :: x"
@@ -81,6 +81,16 @@ put r2-B.md "FINDING HIGH src/a:1 :: x"
 put r3-B.md "FINDING HIGH src/a:1 :: x"
 put r4-B.md "FINDING HIGH src/a:1 :: x"
 af "$(run --round 4 --expect B --cap 3)" 3 cap-reached "cap_reached"
+# cap reached AT the cap round (round == cap), strictly decreasing so neither oscillation
+# nor reappearance fires → CLOSED cap-reached. The cap is the round LIMIT, not limit+1.
+reset
+put r1-B.md "FINDING HIGH src/a:1 :: x
+FINDING HIGH src/b:2 :: y
+FINDING HIGH src/c:3 :: z"
+put r2-B.md "FINDING HIGH src/a:1 :: x
+FINDING HIGH src/b:2 :: y"
+put r3-B.md "FINDING HIGH src/a:1 :: x"
+af "$(run --round 3 --expect B --cap 3)" 3 cap-reached "cap_reached_at_cap_round"
 # degrade safely: prior-round files absent → no false oscillation, just open-findings
 reset
 put r2-B.md "FINDING HIGH src/a:1 :: x"

@@ -310,7 +310,7 @@ The vault is an **optional** notes MCP (e.g. Obsidian — `obsidian_simple_searc
 
 **What the gate does and does NOT guarantee.** The gate is *sound over its inputs*: given the findings files, the verdict is mechanical and fail-closed — a `gate open` can't be self-reported past an open BLOCKER/HIGH. It does **not** certify the findings are *complete*: a too-lenient reviewer that misses a real blocker, or wrongly writes `NONE`, is not caught by the resolver. The de-biasers against *that* failure are reviewer independence, adversarial framing, and (large/critical) cross-family + multi-run review — not the resolver. The resolver hardens against self-report **inflation**; reviewer quality is what guards **completeness**.
 
-**Anti-oscillation (blocker-aware):** compare the open BLOCKER/HIGH set round r→r+1. **Stop + ask with the gate CLOSED** if the open BLOCKER/HIGH count does not strictly decrease across the round, or a finding that had disappeared reappears. The 3-round cap is a hard backstop: reaching it → **stop + ask, gate CLOSED — never auto-proceed.**
+**Anti-oscillation (blocker-aware):** compare the open BLOCKER/HIGH set round r→r+1. **Stop + ask with the gate CLOSED** if the open BLOCKER/HIGH count does not strictly decrease across the round, or a finding that had disappeared reappears. The 3-round cap is a hard backstop: the resolver emits `cap-reached` at **`round == cap`** (the cap is the round *limit* — round 3 under `--cap 3`, not round 4) when open findings remain → **stop + ask, gate CLOSED — never auto-proceed.**
 
 **Knob — multi-run verdict (large/critical only):** run the reviewer's binary verdict 3× and take the majority (single-judge verdicts have real run-to-run variance). Not for default `small`.
 
