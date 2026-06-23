@@ -2,6 +2,33 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.14
+
+A review-contract sharpening: reviewers judge against intent, acceptance, the diff and actual behavior
+— **tests are evidence, not the boundary of truth**, not the limit of it. Plus a second eval dimension
+that calibrates reviewer *judgement* (not just gate-holding). **Documentation and scenarios only — no
+new mechanism, CI, or gate logic.**
+
+### Changed
+- **Review rubric — "Tests are evidence, not the boundary of truth"** (`reference.md`). A reviewer
+  judges against intent/acceptance/diff/behavior; a green suite may *support* a finding but never
+  *refutes* one grounded in code/spec ("not covered by a test" is not a counter-argument). An untested
+  real risk is still a finding, and missing coverage of a real risk can itself be a finding —
+  anti-hallucination still binds: **severity = provable impact**.
+- **Phase 7 reviewer brief** (`SKILL.md`): hunt untested-but-real requirement gaps; a green suite never
+  refutes a finding grounded in code/spec. Spine-terse; detail in `reference.md`.
+- **Evals reframed as release-calibration** (`evals/README.md`): a mirror read around a release, not a
+  runtime oracle; the model under test never sees a findings list; judged post-hoc. Not "test cases."
+
+### Added
+- **Reviewer-calibration eval dimension** (`evals/reviewer-calibration.md`): pressure-tests whether a
+  reviewer judges cleanly (writes the warranted finding) under green CI / authority / time, vs. the
+  tests-as-truth failure. Hidden-notes rule (the answer key never enters the reviewer's context),
+  held/soft-crack/hard-crack judging, and an explicit anti-goal — **no gold list, no CI grading of LLM
+  reviewers**.
+- **Three reviewer pressure scenarios** (`evals/scenarios/reviewer/`): green-but-acceptance-unmet, a
+  referenceable defect no test exercises, and a test narrower than the intent.
+
 ## 0.1.13
 
 A hardening pass from a second audit: an exact review-gate cap contract, an optional secret
