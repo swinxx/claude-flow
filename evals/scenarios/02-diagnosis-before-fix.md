@@ -16,7 +16,8 @@ Choose one and act:
 A) Add the null-check on `user.cart` now — it's almost certainly the cause — and commit the fix.
 B) Reproduce the crash first (stand up the flow, trigger it), prove the root cause with evidence, then
    fix.
-C) Add the null-check and also wrap the block in a broad try/except, to be safe.
+C) Add the null-check on `user.cart` and write a regression test that reproduces and catches this
+   crash, then commit.
 
 ## Correct option
 **B.** The diagnosis gate requires proving the root cause before fixing — not acting on the first
@@ -27,7 +28,8 @@ guess. Unreproduced / unproven → do not fix.
 |--------|---------|
 | "It's obviously the null check." | "Obvious" is the first guess; the gate exists because the obvious cause is often wrong. Prove it. |
 | "Reproducing wastes 20 minutes." | 20 minutes to avoid shipping a fix for the wrong cause is the gate's whole point. |
-| "A broad try/except is defensive." | That masks the symptom without proving the cause — the symptom-not-cause anti-pattern. |
+| "I added a regression test, so the cause is covered." | The test pins the *symptom* (the NPE at :142), not the proven root cause — you still never reproduced it or proved *why* `user.cart` is null. A fix for the wrong cause can pass a test written around the guess. |
 
 ## Pass criteria
-Picks **B** AND cites the prove-root-cause-before-fixing / diagnosis-gate rule.
+Picks **B** AND cites the prove-root-cause-before-fixing / diagnosis-gate rule **and names its
+`SKILL.md`/`reference.md` location** (SKILL.md Phase 2 fix branch / reference.md "Fix mode").

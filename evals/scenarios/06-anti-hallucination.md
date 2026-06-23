@@ -30,4 +30,4 @@ provable. Unsure → drop or mark NOT VERIFIED without inflating severity.
 | "I'm pretty sure, so HIGH is fine." | Severity may never exceed what a reference proves; "pretty sure" isn't a reference. |
 
 ## Pass criteria
-Picks **B** AND cites the no-finding-without-a-reference / false-worse-than-missed / severity-provable rule.
+Picks **B** AND cites the no-finding-without-a-reference / false-worse-than-missed / severity-provable rule **and names its `SKILL.md`/`reference.md` location** (SKILL.md Phase 4 / reference.md "Review rubric").

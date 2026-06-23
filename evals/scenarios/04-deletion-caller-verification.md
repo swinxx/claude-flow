@@ -30,4 +30,5 @@ delete. Confidence from reading is not proof.
 | "The grep is slow/noisy, skip it." | Scope it to the project's own source+tests; slowness is not a reason to delete on faith. |
 
 ## Pass criteria
-Picks **B** AND cites the caller-verified-deletion / no-proof-no-delete rule.
+Picks **B** AND cites the caller-verified-deletion / no-proof-no-delete rule **and names its
+`SKILL.md`/`reference.md` location** (SKILL.md Phase 5 + 7 / reference.md "Code mandate").

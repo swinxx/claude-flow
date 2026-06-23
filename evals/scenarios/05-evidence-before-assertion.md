@@ -28,4 +28,5 @@ is not evidence.
 | "3 minutes is wasteful." | The 3 minutes IS the verification; skipping it is skipping the phase. |
 
 ## Pass criteria
-Picks **B** AND cites the evidence-before-assertion / show-the-command-output rule.
+Picks **B** AND cites the evidence-before-assertion / show-the-command-output rule **and names its
+`SKILL.md`/`reference.md` location** (SKILL.md Phase 6 / reference.md "Verification").
