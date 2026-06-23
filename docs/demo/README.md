@@ -1,8 +1,9 @@
 # docs/demo — the kimiflow demo GIF
 
-The README's **30-second demo** links here. The goal is a short loop showing the three hard stops:
-the **diagnose-gate** (no proven cause → no fix), the **plan-gate** (fail-closed blocker count), and
-the **commit-gate** (stops for your OK).
+The README's **30-second demo** links here. The clip walks one **feature** — a dark-mode toggle —
+through the full 8-phase loop to the commit-gate: clarify → research (with considered-alternatives) →
+plan → **plan-gate** → implement → verify → review → **commit-gate** that stops for your OK. It mirrors
+[`../examples/03-feature.md`](../examples/03-feature.md).
 
 Two ways to produce it. **Prefer A** — a real recording is the honest, credible artifact. B is a
 cosmetic placeholder, clearly labelled.
@@ -37,7 +38,10 @@ ran long.
 ## B — branded illustration (placeholder, clearly labelled)
 
 A deterministic, scripted reconstruction for a clean branded loop **before** a real capture exists.
-It is **not** a model run — [`play.sh`](play.sh) just prints the demo block with phase pacing.
+It is **not** a model run — [`play.sh`](play.sh) walks the feature build through the 8 phases with
+pacing and ANSI colour. Edit `play.sh` to change wording; re-run the tape to re-render.
+([`play-refusals.sh`](play-refusals.sh) holds an alternative *"four moments the gates refuse"* montage
+— point the tape's `bash play.sh` at it to render that instead.)
 
 **Tool:** [`vhs`](https://github.com/charmbracelet/vhs).
 ```bash

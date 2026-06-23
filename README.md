@@ -48,11 +48,11 @@ Gives you `/kimiflow` (auto-discovered, no restart needed) — but **not** the h
 
 ## 30-second demo
 
-![kimiflow demo — a fix run hitting the diagnose, plan-gate and commit-gate stops](docs/demo/kimiflow.gif)
+![kimiflow demo — building a dark-mode toggle through all 8 phases to the commit-gate](docs/demo/kimiflow.gif)
 
-> _Illustrative reconstruction_ — rendered via [`docs/demo/`](docs/demo/); a real asciinema capture replaces it later.
+> _Illustrative reconstruction_ — one feature (a dark-mode toggle) built gate by gate: clarify → research → plan → **plan-gate** → implement → verify → review → **commit-gate** (stops for your OK). Rendered via [`docs/demo/`](docs/demo/); a real capture replaces it later.
 
-A bug fix, showing the hard stops the loop enforces (full walkthrough: [`examples/02-risky-bugfix.md`](examples/02-risky-bugfix.md)):
+The same gates on a **bug fix** — the other mode (full walkthrough: [`examples/02-risky-bugfix.md`](examples/02-risky-bugfix.md)):
 
 ```text
 /kimiflow --fix  token refresh throws after the access token expires
@@ -202,11 +202,11 @@ Gibt dir `/kimiflow` (automatisch erkannt, kein Neustart nötig) — aber **nich
 
 ## 30-Sekunden-Demo
 
-![kimiflow-Demo — ein Fix-Lauf trifft Diagnose-, Plan- und Commit-Gate-Stopp](docs/demo/kimiflow.gif)
+![kimiflow-Demo — ein Dark-Mode-Toggle, gebaut durch alle 8 Phasen bis zum Commit-Gate](docs/demo/kimiflow.gif)
 
-> _Illustrative Reko_ — gerendert via [`docs/demo/`](docs/demo/); ein echter asciinema-Mitschnitt ersetzt sie später.
+> _Illustrative Reko_ — ein Feature (Dark-Mode-Toggle), Gate für Gate gebaut: Klärung → Recherche → Plan → **Plan-Gate** → Umsetzung → Verifikation → Review → **Commit-Gate** (stoppt für dein OK). Gerendert via [`docs/demo/`](docs/demo/); ein echter Mitschnitt ersetzt sie später.
 
-Ein Bug-Fix, der die harten Stopps zeigt, die der Loop erzwingt (vollständiger Walkthrough: [`examples/02-risky-bugfix.md`](examples/02-risky-bugfix.md)):
+Dieselben Gates an einem **Bug-Fix** — der andere Modus (vollständiger Walkthrough: [`examples/02-risky-bugfix.md`](examples/02-risky-bugfix.md)):
 
 ```text
 /kimiflow --fix  Token-Refresh wirft, nachdem das Access-Token abgelaufen ist
