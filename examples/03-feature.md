@@ -1,0 +1,174 @@
+# Example 03 — feature: a dark-mode toggle in settings
+
+> **Illustrative walkthrough — not a captured transcript.** Phase order, gate behaviour, finding
+> format and artifact names match the skill spec; the project, paths and `file:line` refs are
+> invented. See [`README.md`](README.md) for why.
+
+The two fix examples ([01](01-small-fix.md), [02](02-risky-bugfix.md)) show bug mode. This is the
+**feature** path, where Phase 2 isn't *diagnose* but *understand & research*, the artifacts are
+`INTENT.md` / `RESEARCH.md` (not `PROBLEM.md` / `DIAGNOSIS.md`), there is **no diagnose-gate**, and a
+`large` run adds **considered alternatives** and the **pre-build summary gate**. Same plan-gate and
+commit-gate machinery as the fixes.
+
+---
+
+```
+/kimiflow  add a dark-mode toggle in settings
+```
+
+### ⚪ Phase 0 — Setup, routing & scope-gate
+
+- Routing: no symptom, an additive capability → **feature mode**.
+- Scope-gate: a settings control **+** a theme/persistence layer **+** app-bootstrap (avoid a flash on
+  load) → several files, real design choices → **`large`**.
+  Announced: *"Scope: large — 2 reviewers, plan-gate loop, considered-alternatives, pre-build summary
+  gate, verify with regression + cold-start, test-gate auto-armed."*
+- State dir: `.kimiflow/dark-mode-toggle/`.
+
+### 🔵 Phase 1 — Clarify (intent)
+
+Three plain-language questions:
+
+1. *Apply immediately, or after a restart?* → **immediately**, live.
+2. *Persist across sessions, and follow the OS theme on first visit?* → **yes**, persist the choice;
+   until the user picks, default to the OS `prefers-color-scheme`.
+3. *Just light/dark now, or a general theming system?* → **just light/dark** for now (don't
+   over-build).
+
+→ `INTENT.md` (goal · the three answers · explicit non-goals: no per-component themes, no server
+sync). ✋ **"Does this match?"** → confirmed.
+
+### 🟣 Phase 2 — Understand & research (memory-first → vault → web → synthesis → save)
+
+- **Memory-first:** checks `.kimiflow/STANDARDS.md` + `.kimiflow/DECISIONS.md`, then the vault (if a
+  notes MCP is present) for *"dark mode" / "theme persistence"* → a prior note says the app already
+  ships CSS custom properties in `styles/tokens.css` and wraps the tree in
+  `src/theme/ThemeProvider.tsx:20`. **Don't re-research what's already known.**
+- **Understand the affected code** with evidence:
+  - `src/settings/SettingsPage.tsx:64` — where a new control row goes.
+  - `src/theme/ThemeProvider.tsx:20` — current theme is hardcoded `light`.
+  - `styles/tokens.css:1` — color tokens are already CSS variables (so a theme switch is "swap the
+    variable set", not a re-render).
+- **Research the gap** (web / context7 — the model may be out of date on the current best practice):
+  the robust pattern is a `data-theme="dark"` attribute on `<html>` + CSS variables, the choice in
+  `localStorage`, initialised from `prefers-color-scheme`, and an **inline pre-hydration script** to
+  set the attribute *before first paint* so a stored dark theme doesn't flash light (FOUC).
+- **(large) Considered alternatives** (recorded in `RESEARCH.md`):
+  - **A — class toggle** (`.dark` on `body`): simple, but every selector needs a `.dark &` variant.
+  - **B — `data-theme` attribute + existing CSS vars**: smallest diff (tokens already exist), no
+    re-render, FOUC solved by the inline script. **← chosen.**
+  - **C — theme via React context re-render**: clean in React, but re-renders the whole tree and
+    duplicates state the DOM can hold. Over-built for light/dark.
+  - Selecting trade-off: **B** reuses the existing token vars, touches the least code, and the only
+    sharp edge (FOUC) has a known one-line fix.
+- → `RESEARCH.md`. The `data-theme` + FOUC-script pattern is **saved back** to the vault / `STANDARDS.md`
+  as a reusable finding.
+
+### ⚫ Phase 3 — Plan (testable acceptance criteria)
+
+- `PLAN.md` (anchored in `RESEARCH.md`, aligned with the existing `ThemeProvider`):
+  1. `useTheme` hook — initialise from `localStorage` → else `prefers-color-scheme`; expose
+     `theme` + `setTheme`.
+  2. Apply effect — set `document.documentElement.dataset.theme`; write the choice to `localStorage`.
+  3. Pre-hydration inline script in the app entry — set `data-theme` before paint (no FOUC).
+  4. Toggle UI — a switch row in `SettingsPage`, wired to `setTheme`.
+- `ACCEPTANCE.md` (EARS + concrete input→output + `AC-N → test`):
+  - `AC-1` — *WHEN the user flips the toggle, THE theme SHALL change live with no reload.*
+    → `theme.spec.tsx › toggle switches theme live`
+  - `AC-2` — *WHEN the app reloads after a choice, THE last-chosen theme SHALL be restored.*
+    → `theme.spec.tsx › choice persists across reload`
+  - `AC-3` — *WHEN there is no stored choice, THE initial theme SHALL follow `prefers-color-scheme`.*
+    → `theme.spec.tsx › first visit follows OS preference`
+  - `AC-4` — *WHEN dark is stored, THE page SHALL paint dark on first frame (no flash of light).*
+    → `theme.e2e.ts › no FOUC on reload`
+
+### 🟡 Phase 4 — Plan-gate (large → 2 reviewers, binary)
+
+**Round 1** — 2 independent reviewers, fresh context, adversarial framing:
+
+`findings/r1-A.md` (goal/completeness):
+```
+NONE
+```
+`findings/r1-B.md` (risk):
+```
+FINDING MEDIUM src/theme/useTheme.ts :: localStorage access throws in private-mode Safari and is undefined under SSR/prerender — guard reads/writes so the hook degrades to prefers-color-scheme instead of crashing the app.
+```
+
+Gate: `resolve-review-gate.sh findings --round 1 --expect A,B` → counts open **BLOCKER/HIGH** only →
+`clean⇥0⇥clean⇥…` → **0 open ✅, gate open in round 1.** The `MEDIUM` is **recorded** in `REVIEW.md`
+and folded into task 1 (wrap `localStorage` in try/catch) — but it **did not close the gate**: only
+`BLOCKER`/`HIGH` gate. (Compare [`02`](02-risky-bugfix.md), where a round-1 `HIGH` closed the gate and
+forced a second round.)
+
+**Step 7 — Pre-build summary gate** (default on, interactive). Prints the *bounded* summary — not a
+full-artifact dump:
+
+```
+Problem/Goal …… add a live light/dark toggle; persist; follow OS on first visit; no FOUC
+Decisions …….… data-theme attribute + existing CSS vars (alt A/C rejected — see RESEARCH.md)
+Plan ……………… useTheme hook · apply effect · pre-hydration script · SettingsPage switch
+Tests/Accept …. AC-1 live → AC-2 persist → AC-3 OS-default → AC-4 no-FOUC  (each → a named test)
+Risks ……….….. localStorage in private mode/SSR (guarded); FOUC (inline script)
+Artifacts ……… .kimiflow/dark-mode-toggle/{INTENT,RESEARCH,PLAN,ACCEPTANCE}.md
+```
+
+✋ **STOP — "Approve to build, or what to change?"** → approve → Phase 5. (Headless / no answer → does
+**not** build: behaves like `--prepare`, emits `--resume`.)
+
+### 🟠 Phase 5 — Implement (TDD)
+
+- Red first: `AC-1..3` as component tests, `AC-4` as a small e2e asserting the first-frame attribute —
+  all failing.
+- Build hook → apply effect → inline pre-hydration script → the SettingsPage switch. `localStorage`
+  reads/writes guarded (the round-1 `MEDIUM`).
+- Surgical: reuses the existing tokens and `ThemeProvider`; no new theming abstraction (honours the
+  Phase-1 non-goal). Every changed line traces to a plan task.
+
+### 🟤 Phase 6 — Verify (goal-backward)
+
+- Each criterion's method run, decisive line shown:
+  - `✓ toggle switches theme live` (AC-1)
+  - `✓ choice persists across reload` (AC-2)
+  - `✓ first visit follows OS preference` (AC-3) — `prefers-color-scheme` mocked dark → app starts dark
+  - `✓ no FOUC on reload` (AC-4) — first painted frame already has `data-theme="dark"`
+- Regression: full suite green.
+- **Cold-start smoke test** (the diff touches the app entry / bootstrap script): boot from scratch with
+  dark stored → no flash. Passes.
+- Goal-backward: every AC artifact Exists / Substantive / Wired (the toggle is imported **and**
+  rendered, the hook is actually consumed).
+
+### 🟢 Phase 7 — Code-review → commit-gate
+
+1. `code-review-audit` (fresh, adversarial) over the diff + `INTENT.md` + `ACCEPTANCE.md`:
+   correctness/requirements/security only; also *"were tests weakened to go green?"* → no. Runs
+   `test-weakening-scan.sh` + the optional `secret-content-scan.sh` → `ADVISORIES.md` (none here).
+   → `CODE-REVIEW.md`: clean.
+2. Findings-file + `resolve-review-gate.sh` loop — round 1 clean, gate open.
+3. ✋ **Commit-gate — STOP.** No advisories to triage. Then:
+
+   ```
+   feat(settings): live light/dark toggle — persisted, OS-default, no FOUC
+
+    src/theme/useTheme.ts            | 38 ++++++++++++++++++++
+    src/theme/ThemeProvider.tsx      |  9 +++--
+    src/settings/SettingsPage.tsx    | 12 +++++++
+    src/app/entry.html               |  6 ++++          (inline pre-hydration script)
+    src/theme/theme.spec.tsx         | 71 +++++++++++++++++++++++++++++++++
+    e2e/theme.e2e.ts                 | 22 ++++++++++
+   ```
+
+   Shows `git status` + `git diff --staged`, **waits for your explicit OK**. On OK → commits the named
+   paths only (no `git add -A`, no AI-attribution trailer). Because scope is `large` and tests are
+   green, it writes the local untracked `.kimiflow/test-gate` and announces it. **Never auto-commits.**
+4. Project memory: appends the `data-theme` + FOUC-script pattern to `.kimiflow/STANDARDS.md` and a
+   3–5 line entry to `.kimiflow/DECISIONS.md`; optional `LEDGER.md` line (slug, scope=large, rounds=1,
+   gate=open).
+
+---
+
+**What feature mode changed vs the fixes:** no `PROBLEM.md`/`DIAGNOSIS.md` and **no diagnose-gate** —
+instead `INTENT.md` + a real **understand & research** phase (memory → vault → web), the `large`
+**considered-alternatives** record, and the **pre-build summary gate** before any code. The
+plan-gate, verify and commit-gate are identical to the fix path. And the round-1 `MEDIUM` that *didn't*
+close the gate shows the gate's binary rule directly: **only `BLOCKER`/`HIGH` count.**

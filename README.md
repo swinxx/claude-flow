@@ -9,13 +9,13 @@
 
 # kimiflow — Feature & Fix Loop (Claude Code skill + plugin)
 
-A **user-invoked** Claude Code skill+plugin that runs a disciplined **8-phase loop** for **building features** and **fixing bugs**: clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review → commit. Every gate is **binary and mechanical** — reviewers write structured findings to files and the gate counts the open blockers itself (and **fails closed**), so a "done" self-report can't inflate past open blockers (the gate is mechanical over the findings — not a proof the findings are complete). In **fix mode** it reproduces the bug and **proves the root cause before touching code**. It ships safety hooks (a secret-commit gate + a drive-by-safe test-gate), is **scope-gated** so small tasks stay lean, and **replies in the language you write in**.
+A **user-invoked** `/kimiflow` skill+plugin that runs a disciplined **8-phase loop** for building features and fixing bugs — clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review → commit. Its gates are **mechanical, not advisory**: reviewers write structured findings to files, a tested **fail-closed** script counts the open blockers, and a "done" self-report can't talk its way past them.
 
 > `SKILL.md` / `reference.md` are written in English. **kimiflow replies in the language you write in** — write in German and it grills/answers in German.
 
-## Why kimiflow over plan-mode + a `CLAUDE.md`?
+## Why this exists
 
-Claude Code's native plan-mode, subagents and hooks cover a lot — so why a skill? Because a prose `CLAUDE.md` *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't talk its way past them. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. A `CLAUDE.md` is advice; these are mechanisms. (kimiflow happily *uses* your `CLAUDE.md` as a conventions hint — it just never relies on it for a gate.)
+Claude Code's native plan-mode, subagents and hooks already cover a lot — so why a skill? Because a prose `CLAUDE.md` *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still *reads* your `CLAUDE.md` as a conventions hint — it just never relies on it for a gate.)
 
 ## Install
 
@@ -45,6 +45,46 @@ git clone https://github.com/swinxx/kimiflow ~/.claude/skills/kimiflow
 Gives you `/kimiflow` (auto-discovered, no restart needed) — but **not** the hooks (`hooks.json` loads only via the plugin).
 
 > **Public repo** — anyone can install; no access request needed. The skill fires **manually only** (`disable-model-invocation: true`) — invoke it with `/kimiflow`.
+
+## 30-second demo
+
+![kimiflow demo — a fix run hitting the diagnose, plan-gate and commit-gate stops](docs/demo/kimiflow.gif)
+
+> _Illustrative reconstruction_ — rendered via [`docs/demo/`](docs/demo/); a real asciinema capture replaces it later.
+
+A bug fix, showing the hard stops the loop enforces (full walkthrough: [`examples/02-risky-bugfix.md`](examples/02-risky-bugfix.md)):
+
+```text
+/kimiflow --fix  token refresh throws after the access token expires
+
+⚪ Phase 0  scope-gate ····· large (touches auth; reproducible symptom)
+🔵 Phase 1  clarify ········ symptom? repro? expected? → PROBLEM.md  ✋ "Does this match?"
+🟣 Phase 2  diagnose ······· reproduces the throw, proves the cause at auth/refresh.ts:88
+            └─ no proven root cause ⇒ NO fix. (proven → continue)
+⚫ Phase 3  plan ··········· fix + EARS acceptance criteria → PLAN.md
+🟡 Phase 4  PLAN-GATE ······ 2 independent reviewers → resolve-review-gate.sh
+            └─ counts open BLOCKER/HIGH, fail-closed, cap 3 → 0 open ✅
+🟠 Phase 5  implement ······ failing test first (red) → fix → green
+🟤 Phase 6  verify ········· throw gone, suite green, checked against the criteria
+🟢 Phase 7  code-review ···· reviewers write findings → gate counts them (fail-closed)
+            └─ COMMIT-GATE: shows the diff, ✋ STOPS for your OK — never auto-commits
+```
+
+Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestion. The clip above is a scripted illustration — record your own from a **real** run with the steps under [`docs/demo/`](docs/demo/).
+
+## What gates are mechanical
+
+"Mechanical" = a tested script or a hook makes the call, not the model's self-report. The honest split:
+
+| Gate | Phase | Mechanism | Fail-closed? |
+|------|-------|-----------|--------------|
+| **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts open `BLOCKER/HIGH` over reviewer findings; cap 3; blocker-aware anti-oscillation | ✅ yes |
+| **Code-review gate** | 7 | same resolver over the post-implementation findings | ✅ yes |
+| **Commit-gate** | 7 | STOP + advisory triage; waits for your explicit OK before any commit | ✅ yes |
+| **Secret-commit hook** | any commit | `PreToolUse` hook — blocks staging secret-looking **paths** + bulk `git add -A`/`.` | ✅ yes |
+| **Test-gate hook** (opt-in) | finish | `Stop` hook — blocks finishing while the project's tests are red | ✅ yes |
+
+What is **not** mechanical (model-judged, by design): the scope classification, the root-cause proof, the verification call, and — the honest limit — **whether the findings are complete**. The gate is mechanical *over the findings the reviewers wrote*; it can't prove they found everything. kimiflow makes the gate un-foolable, not the reviewer omniscient.
 
 ## Usage
 
@@ -123,9 +163,13 @@ kimiflow uses `obsidian_simple_search`, `obsidian_get_file_contents` and `obsidi
 
 # kimiflow — Feature- & Fix-Loop (Deutsch)
 
-Ein **user-invoked** Claude-Code-Skill+Plugin, das einen disziplinierten **8-Phasen-Loop** fürs **Bauen von Features** und **Fixen von Bugs** fährt: Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Jedes Gate ist **binär und mechanisch** — Reviewer schreiben strukturierte Findings in Dateien, das Gate zählt die offenen Blocker selbst (und **failt closed**), „fertig" wird also erzwungen, nicht selbst behauptet. Im **Fix-Modus** reproduziert es den Bug und **belegt die Root-Cause, bevor Code angefasst wird**. Es bringt Sicherheits-Hooks mit (Secret-Commit-Gate + Drive-by-sicheres Test-Gate), ist **scope-gated** (kleine Tasks bleiben schlank) und **antwortet in deiner Sprache**.
+Ein **user-invoked** `/kimiflow`-Skill+Plugin, das einen disziplinierten **8-Phasen-Loop** fürs Bauen von Features und Fixen von Bugs fährt — Klärung → Verstehen/Diagnose → Plan → Plan-Gate → Umsetzung → Verifikation → Code-Review → Commit. Seine Gates sind **mechanisch, nicht beratend**: Reviewer schreiben strukturierte Findings in Dateien, ein getestetes **fail-closed** Script zählt die offenen Blocker, und ein „fertig" lässt sich nicht daran vorbeireden.
 
 > `SKILL.md` / `reference.md` sind auf Englisch geschrieben. **kimiflow antwortet in deiner Sprache** — schreibst du Deutsch, grillt/antwortet es auf Deutsch.
+
+## Warum es das gibt
+
+Claude Codes native Plan-Mode, Subagents und Hooks decken schon viel ab — warum also ein Skill? Weil ein prosaisches `CLAUDE.md` *bittet*; kimiflow *erzwingt*. Plan-Gate und Code-Review-Gate sind **getestete, fail-closed Resolver-Scripts** (`hooks/resolve-review-gate.sh`), die offene Blocker mechanisch zählen — ein geschwätziges Modell argumentiert sich da nicht vorbei. Secret-Commit- und Test-Gate sind echte **PreToolUse/Stop-Hooks**, keine Erinnerungen. Und es reist mit: einmal installiert, identische Gates in jedem Repo, kein Per-Projekt-Prompt-Drift. (kimiflow *liest* dein `CLAUDE.md` weiterhin als Konventions-Hinweis — verlässt sich für ein Gate nur nie darauf.)
 
 ## Installation
 
@@ -155,6 +199,46 @@ git clone https://github.com/swinxx/kimiflow ~/.claude/skills/kimiflow
 Gibt dir `/kimiflow` (automatisch erkannt, kein Neustart nötig) — aber **nicht** die Hooks (`hooks.json` lädt nur über das Plugin).
 
 > **Öffentliches Repo** — jeder kann installieren; kein Zugriffsantrag nötig. Der Skill springt **nur manuell** an (`disable-model-invocation: true`) — Aufruf mit `/kimiflow`.
+
+## 30-Sekunden-Demo
+
+![kimiflow-Demo — ein Fix-Lauf trifft Diagnose-, Plan- und Commit-Gate-Stopp](docs/demo/kimiflow.gif)
+
+> _Illustrative Reko_ — gerendert via [`docs/demo/`](docs/demo/); ein echter asciinema-Mitschnitt ersetzt sie später.
+
+Ein Bug-Fix, der die harten Stopps zeigt, die der Loop erzwingt (vollständiger Walkthrough: [`examples/02-risky-bugfix.md`](examples/02-risky-bugfix.md)):
+
+```text
+/kimiflow --fix  Token-Refresh wirft, nachdem das Access-Token abgelaufen ist
+
+⚪ Phase 0  Scope-Gate ····· large (betrifft Auth; reproduzierbares Symptom)
+🔵 Phase 1  Klärung ········ Symptom? Repro? Erwartet? → PROBLEM.md  ✋ „Passt das so?"
+🟣 Phase 2  Diagnose ······· reproduziert den Throw, belegt die Ursache bei auth/refresh.ts:88
+            └─ keine belegte Root-Cause ⇒ KEIN Fix. (belegt → weiter)
+⚫ Phase 3  Plan ··········· Fix + EARS-Akzeptanzkriterien → PLAN.md
+🟡 Phase 4  PLAN-GATE ······ 2 unabhängige Reviewer → resolve-review-gate.sh
+            └─ zählt offene BLOCKER/HIGH, fail-closed, Cap 3 → 0 offen ✅
+🟠 Phase 5  Umsetzung ······ erst der fehlschlagende Test (rot) → Fix → grün
+🟤 Phase 6  Verifikation ··· Throw weg, Suite grün, gegen die Kriterien geprüft
+🟢 Phase 7  Code-Review ···· Reviewer schreiben Findings → Gate zählt sie (fail-closed)
+            └─ COMMIT-GATE: zeigt den Diff, ✋ STOPPT für dein OK — committet nie selbst
+```
+
+Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Prompt-Vorschlag. Der Clip oben ist eine gescriptete Illustration — deine eigene aus einem **echten** Lauf nimmst du mit den Schritten unter [`docs/demo/`](docs/demo/) auf.
+
+## Welche Gates mechanisch sind
+
+„Mechanisch" = ein getestetes Script oder ein Hook entscheidet, nicht der Selbstreport des Modells. Die ehrliche Aufteilung:
+
+| Gate | Phase | Mechanismus | Fail-closed? |
+|------|-------|-------------|--------------|
+| **Plan-Gate** | 4 | `hooks/resolve-review-gate.sh` zählt offene `BLOCKER/HIGH` über die Reviewer-Findings; Cap 3; blocker-aware Anti-Oszillation | ✅ ja |
+| **Code-Review-Gate** | 7 | derselbe Resolver über die Findings nach der Umsetzung | ✅ ja |
+| **Commit-Gate** | 7 | STOP + Advisory-Triage; wartet auf dein explizites OK vor jedem Commit | ✅ ja |
+| **Secret-Commit-Hook** | jeder Commit | `PreToolUse`-Hook — blockt secret-verdächtige **Pfade** + Bulk-`git add -A`/`.` | ✅ ja |
+| **Test-Gate-Hook** (opt-in) | Abschluss | `Stop`-Hook — blockt das Beenden, solange die Projekt-Tests rot sind | ✅ ja |
+
+**Nicht** mechanisch (modell-beurteilt, by design): die Scope-Einstufung, der Root-Cause-Beleg, die Verifikations-Entscheidung und — die ehrliche Grenze — **ob die Findings vollständig sind**. Das Gate ist mechanisch *über die Findings, die die Reviewer geschrieben haben*; es kann nicht beweisen, dass sie alles gefunden haben. kimiflow macht das Gate un-überredbar, nicht den Reviewer allwissend.
 
 ## Nutzung
 
