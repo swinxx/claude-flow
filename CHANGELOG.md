@@ -2,6 +2,24 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.32
+
+Close the **Learning Loop** mechanically for completed Kimiflow runs.
+
+### Added
+- `memory-router.sh review-run` writes `.kimiflow/<slug>/LEARNING-REVIEW.md`, records the four-question
+  learning set in `.kimiflow/project/LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`, and updates the
+  memory index.
+- `memory-router.sh verify-run` fails closed when a run has no learning review, no recorded learning IDs, or
+  a skipped review without an explicit reason.
+- Memory-router tests cover recorded reviews, explicit skip reviews, index refresh, and the missing-review
+  blocker.
+
+### Changed
+- Phase 7 now requires `review-run` + `verify-run` before `STATE.md` may be marked `Status: done`.
+- README, reference docs, and install smokes now surface `LEARNING-REVIEW.md`, `review-run`, and `verify-run`
+  as part of the Kimiflow memory contract.
+
 ## 0.1.31
 
 Ship the **Memory Router and Learning Loop** for token-cheap project recall.

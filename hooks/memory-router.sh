@@ -6,13 +6,15 @@
 #   memory-router.sh recall --query <text>|--query-file <path> [--root <path>] [--max <n>] [--write <path>] [--pretty]
 #   memory-router.sh classify --input <path>|--text <text> [--pretty]
 #   memory-router.sh record --summary <text> --topic <topic> --evidence <ref>... [--root <path>] [--kind <kind>] [--scope <scope>] [--confidence <level>] [--sensitivity <level>] [--status <status>]
+#   memory-router.sh review-run --run <path> [--root <path>] [--write] [--pretty] [--skip <reason>]
+#   memory-router.sh verify-run --run <path> [--root <path>]
 #   memory-router.sh curate [--root <path>] [--write] [--pretty]
 #
-# Output: JSON except record, which emits one stable RECORDED line.
+# Output: JSON except record/verify-run, which emit stable tab-separated lines.
 set -u
 
 usage() {
-  sed -n '1,12p' "$0" >&2
+  sed -n '1,13p' "$0" >&2
 }
 
 die() {
@@ -482,35 +484,38 @@ slugify() {
     | cut -c1-40
 }
 
-cmd_record() {
-  local root="" summary="" topic="" kind="learning" scope="project" confidence="medium" sensitivity="normal" status="current"
-  local evidence_json='[]'
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --root) shift; root="${1:-}" ;;
-      --summary) shift; summary="${1:-}" ;;
-      --topic) shift; topic="${1:-}" ;;
-      --kind) shift; kind="${1:-}" ;;
-      --scope) shift; scope="${1:-}" ;;
-      --confidence) shift; confidence="${1:-}" ;;
-      --sensitivity) shift; sensitivity="${1:-}" ;;
-      --status) shift; status="${1:-}" ;;
-      --evidence) shift; evidence_json="$(printf '%s\n' "$evidence_json" | jq --arg value "${1:-}" '. + [$value]')" ;;
-      --help|-h) usage; exit 0 ;;
-      *) die "record: unknown argument: $1" 2 ;;
-    esac
-    shift
-  done
-  need_jq
-  [ -n "$summary" ] || die "record requires --summary" 2
-  [ -n "$topic" ] || die "record requires --topic" 2
-  [ "$(printf '%s\n' "$evidence_json" | jq 'length')" -gt 0 ] || die "record requires at least one --evidence" 2
-  root="$(resolve_root "$root")"
-
+append_learning_row() {
+  local root="$1" kind="$2" scope="$3" topic="$4" summary="$5" evidence_json="$6" confidence="$7" sensitivity="$8" status="$9"
   local project learnings source_commit id row
   project="$root/.kimiflow/project"
   learnings="$project/LEARNINGS.jsonl"
   mkdir -p "$project"
+  if [ -f "$learnings" ]; then
+    local existing_id
+    existing_id="$(jq -Rsc -r \
+      --arg kind "$kind" \
+      --arg scope "$scope" \
+      --arg topic "$topic" \
+      --arg summary "$summary" \
+      --argjson evidence "$evidence_json" \
+      '
+        split("\n")
+        | map(select(length > 0) | (fromjson? // empty))
+        | map(select(
+            (.kind // "") == $kind
+            and (.scope // "") == $scope
+            and (.topic // "") == $topic
+            and (.summary // "") == $summary
+            and ((.evidence // []) == $evidence)
+            and ((.status // "current") != "archived")
+          ))
+        | .[0].id // ""
+      ' "$learnings")"
+    if [ -n "$existing_id" ]; then
+      printf '%s' "$existing_id"
+      return 0
+    fi
+  fi
   source_commit="$(git -C "$root" rev-parse --short HEAD 2>/dev/null || printf 'NOT VERIFIED')"
   id="learn_$(date -u +%Y%m%d)_$(slugify "$topic")_$$"
   row="$(jq -nc \
@@ -539,6 +544,329 @@ cmd_record() {
       status: $status
     }')"
   printf '%s\n' "$row" >> "$learnings"
+  printf '%s' "$id"
+}
+
+rel_path() {
+  local root="$1" path="$2"
+  case "$path" in
+    "$root"/*) printf '%s' "${path#"$root"/}" ;;
+    "$root") printf '.' ;;
+    *) printf '%s' "$path" ;;
+  esac
+}
+
+resolve_run_dir() {
+  local root="$1" run="$2"
+  [ -n "$run" ] || die "run path required" 2
+  case "$run" in
+    /*) ;;
+    *) run="$root/$run" ;;
+  esac
+  (cd "$run" 2>/dev/null && pwd) || die "run directory not found: $run" 2
+}
+
+first_substantive_line() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  awk '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line == "") next
+      if (line ~ /^#{1,6}[[:space:]]/) next
+      if (line ~ /^```/) next
+      gsub(/[[:space:]]+/, " ", line)
+      print line
+      exit
+    }
+  ' "$file"
+}
+
+review_candidate_json() {
+  local root="$1" run_dir="$2" question="$3" kind="$4" topic="$5"
+  shift 5
+  local file path summary rel evidence_json classification target sensitivity confidence
+  for file in "$@"; do
+    path="$run_dir/$file"
+    [ -f "$path" ] || continue
+    summary="$(first_substantive_line "$path" | cut -c1-320)"
+    [ -n "$summary" ] || continue
+    rel="$(rel_path "$root" "$path")"
+    evidence_json="$(jq -nc --arg evidence "$rel:1" '[$evidence]')"
+    classification="$(classify_text "$summary")"
+    target="$(printf '%s\n' "$classification" | jq -r '.classification.target')"
+    sensitivity="$(printf '%s\n' "$classification" | jq -r '.classification.sensitivity')"
+    confidence="$(printf '%s\n' "$classification" | jq -r '.classification.confidence')"
+    [ "$target" = "skip" ] && continue
+    [ "$target" = "run_only" ] && target="project_memory"
+    jq -nc \
+      --arg question "$question" \
+      --arg kind "$kind" \
+      --arg scope "project" \
+      --arg topic "$topic" \
+      --arg summary "$summary" \
+      --argjson evidence "$evidence_json" \
+      --arg target "$target" \
+      --arg sensitivity "$sensitivity" \
+      --arg confidence "$confidence" \
+      '{
+        question: $question,
+        kind: $kind,
+        scope: $scope,
+        topic: $topic,
+        summary: $summary,
+        evidence: $evidence,
+        target: $target,
+        sensitivity: $sensitivity,
+        confidence: $confidence
+      }'
+    return 0
+  done
+  return 1
+}
+
+write_bounded_memory() {
+  local root="$1" budget="${KIMIFLOW_MEMORY_BUDGET:-900}"
+  local project memory learnings body max_items words
+  project="$root/.kimiflow/project"
+  memory="$project/MEMORY.md"
+  learnings="$project/LEARNINGS.jsonl"
+  [ -f "$learnings" ] || return 0
+  mkdir -p "$project"
+
+  max_items=8
+  while :; do
+    body="$(jq -Rsc --argjson max "$max_items" '
+      split("\n")
+      | map(select(length > 0) | (fromjson? // empty))
+      | map(select((.status // "current") == "current"))
+      | map(select((.sensitivity // "normal") != "security" and (.sensitivity // "normal") != "private"))
+      | reverse
+      | .[:$max]
+      | reverse
+      | map("- [" + (.topic // "uncategorized") + " · " + (.kind // "learning") + "] " + ((.summary // "") | tostring | .[0:220]) + " (evidence: " + (((.evidence // []) | .[0] // "NOT VERIFIED") | tostring) + ")")
+      | join("\n")
+    ' "$learnings")"
+    {
+      printf '# Project Memory\n\n'
+      printf 'Generated: %s\n' "$(iso_now)"
+      printf 'Policy: bounded always-on summary; raw/private/security learnings stay in LEARNINGS.jsonl and are recalled on demand.\n\n'
+      printf '## Always-On Learnings\n\n'
+      if [ -n "$body" ]; then
+        printf '%s\n' "$body"
+      else
+        printf 'No publish-safe always-on learnings yet. Use LEARNINGS.jsonl recall on demand.\n'
+      fi
+    } > "$memory"
+    words="$(word_count_file "$memory")"
+    [ "$words" -le "$budget" ] && break
+    [ "$max_items" -le 2 ] && break
+    max_items=$((max_items - 2))
+  done
+}
+
+write_learning_review_markdown() {
+  local path="$1" run_rel="$2" status="$3" entries="$4" skip_reason="$5"
+  mkdir -p "$(dirname "$path")"
+  {
+    printf '# Learning Review\n\n'
+    printf 'Run: %s\n' "$run_rel"
+    printf 'Status: %s\n' "$status"
+    printf 'Generated: %s\n\n' "$(iso_now)"
+    if [ "$status" = "skipped" ]; then
+      printf 'Skip reason: %s\n' "$skip_reason"
+    else
+      printf '## Four Questions\n\n'
+      printf '%s\n' "$entries" | jq -r '
+        .[] |
+        "### " + .question + "\n" +
+        "Summary: " + (.summary // "") + "\n" +
+        "Kind: " + (.kind // "") + "\n" +
+        "Target: " + (.target // "") + "\n" +
+        "Sensitivity: " + (.sensitivity // "") + "\n" +
+        "Evidence:\n" + (((.evidence // []) | map("- " + .) | join("\n"))) + "\n" +
+        "Recorded: " + (.recorded_id // "pending") + "\n"
+      '
+    fi
+  } > "$path"
+}
+
+cmd_review_run() {
+  local root="" run="" pretty=0 write=0 skip_reason=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --root) shift; root="${1:-}" ;;
+      --run) shift; run="${1:-}" ;;
+      --write) write=1 ;;
+      --pretty) pretty=1 ;;
+      --skip) shift; skip_reason="${1:-}" ;;
+      --help|-h) usage; exit 0 ;;
+      *) die "review-run: unknown argument: $1" 2 ;;
+    esac
+    shift
+  done
+  need_jq
+  root="$(resolve_root "$root")"
+  local run_dir run_rel review candidate entries recorded count i entry kind scope topic summary evidence_json confidence sensitivity id out memory_updated
+  run_dir="$(resolve_run_dir "$root" "$run")"
+  run_rel="$(rel_path "$root" "$run_dir")"
+  review="$run_dir/LEARNING-REVIEW.md"
+  memory_updated=false
+
+  if [ -n "$skip_reason" ]; then
+    if [ "$write" -eq 1 ]; then
+      write_learning_review_markdown "$review" "$run_rel" "skipped" "[]" "$skip_reason"
+    fi
+    out="$(jq -n \
+      --arg run "$run_rel" \
+      --arg review_path "$(rel_path "$root" "$review")" \
+      --arg reason "$skip_reason" \
+      --argjson written "$write" \
+      '{
+        schema_version: 1,
+        status: "skipped",
+        run: $run,
+        review_path: $review_path,
+        skip_reason: $reason,
+        written: ($written == 1),
+        entries: [],
+        recorded_count: 0,
+        memory_updated: false
+      }')"
+    json_print "$out" "$pretty"
+    return 0
+  fi
+
+  entries='[]'
+  candidate="$(review_candidate_json "$root" "$run_dir" "what_was_learned" "learned" "run-learning" RESEARCH.md DIAGNOSIS.md VERIFICATION.md)" \
+    && entries="$(printf '%s\n' "$entries" | jq --argjson item "$candidate" '. + [$item]')"
+  candidate="$(review_candidate_json "$root" "$run_dir" "which_project_rule_was_confirmed" "project_rule_confirmed" "project-rules" ACCEPTANCE.md STANDARDS.md PLAN.md)" \
+    && entries="$(printf '%s\n' "$entries" | jq --argjson item "$candidate" '. + [$item]')"
+  candidate="$(review_candidate_json "$root" "$run_dir" "which_trap_or_pitfall_appeared" "trap_or_pitfall" "pitfalls" CODE-REVIEW.md ADVISORIES.md CURRENT-STATE.md)" \
+    && entries="$(printf '%s\n' "$entries" | jq --argjson item "$candidate" '. + [$item]')"
+  candidate="$(review_candidate_json "$root" "$run_dir" "which_decision_remains_important" "important_decision" "decisions" PLAN.md RESEARCH.md DIAGNOSIS.md)" \
+    && entries="$(printf '%s\n' "$entries" | jq --argjson item "$candidate" '. + [$item]')"
+
+  count="$(printf '%s\n' "$entries" | jq 'length')"
+  [ "$count" -gt 0 ] || die "review-run found no reusable learning candidates; pass --skip <reason> if this run is intentionally trivial" 1
+
+  if [ "$write" -eq 1 ]; then
+    recorded='[]'
+    i=0
+    while [ "$i" -lt "$count" ]; do
+      entry="$(printf '%s\n' "$entries" | jq -c ".[$i]")"
+      kind="$(printf '%s\n' "$entry" | jq -r '.kind')"
+      scope="$(printf '%s\n' "$entry" | jq -r '.scope')"
+      topic="$(printf '%s\n' "$entry" | jq -r '.topic')"
+      summary="$(printf '%s\n' "$entry" | jq -r '.summary')"
+      evidence_json="$(printf '%s\n' "$entry" | jq -c '.evidence')"
+      confidence="$(printf '%s\n' "$entry" | jq -r '.confidence')"
+      sensitivity="$(printf '%s\n' "$entry" | jq -r '.sensitivity')"
+      id="$(append_learning_row "$root" "$kind" "$scope" "$topic" "$summary" "$evidence_json" "$confidence" "$sensitivity" "current")"
+      entry="$(printf '%s\n' "$entry" | jq --arg id "$id" '. + {recorded_id: $id}')"
+      recorded="$(printf '%s\n' "$recorded" | jq --argjson item "$entry" '. + [$item]')"
+      i=$((i + 1))
+    done
+    entries="$recorded"
+    write_bounded_memory "$root"
+    memory_updated=true
+    cmd_curate --root "$root" --write >/dev/null
+    write_learning_review_markdown "$review" "$run_rel" "recorded" "$entries" ""
+  fi
+
+  out="$(jq -n \
+    --arg run "$run_rel" \
+    --arg review_path "$(rel_path "$root" "$review")" \
+    --argjson entries "$entries" \
+    --argjson written "$write" \
+    --argjson memory_updated "$memory_updated" \
+    '{
+      schema_version: 1,
+      status: (if $written == 1 then "recorded" else "preview" end),
+      run: $run,
+      review_path: $review_path,
+      written: ($written == 1),
+      entries: $entries,
+      recorded_count: ($entries | map(select(.recorded_id != null)) | length),
+      memory_updated: $memory_updated
+    }')"
+  json_print "$out" "$pretty"
+}
+
+cmd_verify_run() {
+  local root="" run=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --root) shift; root="${1:-}" ;;
+      --run) shift; run="${1:-}" ;;
+      --help|-h) usage; exit 0 ;;
+      *) die "verify-run: unknown argument: $1" 2 ;;
+    esac
+    shift
+  done
+  root="$(resolve_root "$root")"
+  local run_dir review status reason
+  run_dir="$(resolve_run_dir "$root" "$run")"
+  review="$run_dir/LEARNING-REVIEW.md"
+  if [ ! -f "$review" ]; then
+    printf 'LEARNING_REVIEW\tCLOSED\treason=missing_review\tpath=%s\n' "$(rel_path "$root" "$review")"
+    return 1
+  fi
+  status="$(awk -F': ' '/^Status:/ {print $2; exit}' "$review")"
+  case "$status" in
+    recorded)
+      if grep -qE '^Recorded:[[:space:]]+learn_' "$review"; then
+        printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tpath=%s\n' "$(rel_path "$root" "$review")"
+        return 0
+      fi
+      printf 'LEARNING_REVIEW\tCLOSED\treason=missing_recorded_ids\tpath=%s\n' "$(rel_path "$root" "$review")"
+      return 1
+      ;;
+    skipped)
+      reason="$(awk -F': ' '/^Skip reason:/ {print $2; exit}' "$review")"
+      if [ -n "$reason" ]; then
+        printf 'LEARNING_REVIEW\tOPEN\tstatus=skipped\treason=%s\tpath=%s\n' "$reason" "$(rel_path "$root" "$review")"
+        return 0
+      fi
+      printf 'LEARNING_REVIEW\tCLOSED\treason=missing_skip_reason\tpath=%s\n' "$(rel_path "$root" "$review")"
+      return 1
+      ;;
+    *)
+      printf 'LEARNING_REVIEW\tCLOSED\treason=invalid_status\tstatus=%s\tpath=%s\n' "${status:-missing}" "$(rel_path "$root" "$review")"
+      return 1
+      ;;
+  esac
+}
+
+cmd_record() {
+  local root="" summary="" topic="" kind="learning" scope="project" confidence="medium" sensitivity="normal" status="current"
+  local evidence_json='[]'
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --root) shift; root="${1:-}" ;;
+      --summary) shift; summary="${1:-}" ;;
+      --topic) shift; topic="${1:-}" ;;
+      --kind) shift; kind="${1:-}" ;;
+      --scope) shift; scope="${1:-}" ;;
+      --confidence) shift; confidence="${1:-}" ;;
+      --sensitivity) shift; sensitivity="${1:-}" ;;
+      --status) shift; status="${1:-}" ;;
+      --evidence) shift; evidence_json="$(printf '%s\n' "$evidence_json" | jq --arg value "${1:-}" '. + [$value]')" ;;
+      --help|-h) usage; exit 0 ;;
+      *) die "record: unknown argument: $1" 2 ;;
+    esac
+    shift
+  done
+  need_jq
+  [ -n "$summary" ] || die "record requires --summary" 2
+  [ -n "$topic" ] || die "record requires --topic" 2
+  [ "$(printf '%s\n' "$evidence_json" | jq 'length')" -gt 0 ] || die "record requires at least one --evidence" 2
+  root="$(resolve_root "$root")"
+
+  local id
+  id="$(append_learning_row "$root" "$kind" "$scope" "$topic" "$summary" "$evidence_json" "$confidence" "$sensitivity" "$status")"
   printf 'RECORDED\t%s\t%s\n' ".kimiflow/project/LEARNINGS.jsonl" "$id"
 }
 
@@ -626,6 +954,8 @@ case "$cmd" in
   recall) cmd_recall "$@" ;;
   classify) cmd_classify "$@" ;;
   record) cmd_record "$@" ;;
+  review-run) cmd_review_run "$@" ;;
+  verify-run) cmd_verify_run "$@" ;;
   curate) cmd_curate "$@" ;;
   --help|-h|help) usage; exit 0 ;;
   *) die "unknown command: $cmd" 2 ;;

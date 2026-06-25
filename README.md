@@ -191,9 +191,10 @@ you explicitly ask for a sanitized public note.
 ## Memory Router
 
 Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `LEARNINGS.jsonl`,
-`MEMORY-INDEX.json`, and `RECALL.md`. `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to
-check memory freshness, recall relevant project facts, classify new learnings, and curate the index without
-rereading the whole repo or Vault every time.
+`MEMORY-INDEX.json`, and `RECALL.md`; each completed run also gets a run-local `LEARNING-REVIEW.md`.
+`hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
+project facts, classify new learnings, write the required run-close learning review, and curate the index
+without rereading the whole repo or Vault every time.
 
 This layer is local-first and optional-provider-aware. It works without a Vault MCP; if a Vault is connected,
 kimiflow can promote curated long-term learnings there while keeping private/security details local or
@@ -454,9 +455,11 @@ außer du verlangst explizit eine sanitisierte öffentliche Notiz.
 ## Memory Router
 
 Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`,
-`LEARNINGS.jsonl`, `MEMORY-INDEX.json` und `RECALL.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2
-einen günstigen Weg, Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu
-klassifizieren und den Index zu kuratieren, ohne jedes Mal das ganze Repo oder den ganzen Vault zu lesen.
+`LEARNINGS.jsonl`, `MEMORY-INDEX.json` und `RECALL.md`; jeder abgeschlossene Run bekommt zusätzlich eine
+run-lokale `LEARNING-REVIEW.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
+Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu klassifizieren, die
+verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
+oder den ganzen Vault zu lesen.
 
 Diese Schicht ist local-first und funktioniert ohne Vault-MCP. Wenn ein Vault verbunden ist, kann kimiflow
 kuratierte Langzeit-Learnings dorthin schreiben; private oder sicherheitsrelevante Details bleiben lokal

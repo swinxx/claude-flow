@@ -62,7 +62,7 @@ grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state
 grep -q 'memory-router.sh' "$SKILL" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"
 grep -q 'Memory Router & Learning Loop' "$ROOT/SKILL.md" && ok "canonical Memory Router present" || bad "canonical Memory Router missing"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "per-section staleness documented" || bad "per-section staleness missing"
-for term in MEMORY.md LEARNINGS.jsonl MEMORY-INDEX.json RECALL.md; do
+for term in MEMORY.md LEARNINGS.jsonl MEMORY-INDEX.json RECALL.md LEARNING-REVIEW.md review-run verify-run; do
   grep -q "$term" "$ROOT/reference.md" && ok "memory artifact documented: $term" || bad "memory artifact missing: $term"
 done
 for term in 'Storage targets' 'kimiflow+vault' 'repo-docs' 'IMPROVEMENTS.md' 'DOCS-PLAN.md'; do

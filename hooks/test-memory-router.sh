@@ -77,6 +77,43 @@ assert_jq "$out" '.topics.memory | length >= 1' "curate_builds_topic_index"
 [ -f "$REPO/.kimiflow/project/MEMORY-INDEX.json" ] && pass "curate_writes_index" || fail "curate_writes_index"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.schema_version == 1 and .repo_id == "github.com/swinxx/kimiflow" and .learnings.total >= 4' "curate_index_shape"
 
+mkdir -p "$REPO/.kimiflow/demo-run"
+if run_router verify-run --run .kimiflow/demo-run >/dev/null 2>&1; then
+  fail "verify_run_blocks_missing_review"
+else
+  pass "verify_run_blocks_missing_review"
+fi
+cat > "$REPO/.kimiflow/demo-run/RESEARCH.md" <<'EOF'
+Memory recall should run before web research when a local project map can answer the question.
+EOF
+cat > "$REPO/.kimiflow/demo-run/ACCEPTANCE.md" <<'EOF'
+Project rule confirmed: every acceptance criterion maps to a named verification method.
+EOF
+cat > "$REPO/.kimiflow/demo-run/CODE-REVIEW.md" <<'EOF'
+Pitfall: do not publish raw security findings into repo documentation.
+EOF
+cat > "$REPO/.kimiflow/demo-run/PLAN.md" <<'EOF'
+Decision: keep Memory Router local-first and use Vault only as an optional provider.
+EOF
+out="$(run_router review-run --run .kimiflow/demo-run --write)"
+assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and .memory_updated == true' "review_run_records_four_questions"
+[ -f "$REPO/.kimiflow/demo-run/LEARNING-REVIEW.md" ] && pass "review_run_writes_review" || fail "review_run_writes_review"
+[ -f "$REPO/.kimiflow/project/MEMORY.md" ] && pass "review_run_writes_bounded_memory" || fail "review_run_writes_bounded_memory"
+out="$(run_router verify-run --run .kimiflow/demo-run)"
+printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=recorded' && pass "verify_run_opens_recorded_review" || fail "verify_run_opens_recorded_review"
+assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(.kind) | index("learned") and index("project_rule_confirmed") and index("trap_or_pitfall") and index("important_decision")' "review_run_records_expected_kinds"
+assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.learnings.total >= 8 and (.topics.decisions | length >= 1)' "review_run_refreshes_index"
+before_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
+out="$(run_router review-run --run .kimiflow/demo-run --write)"
+after_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
+[ "$before_count" = "$after_count" ] && pass "review_run_is_idempotent" || fail "review_run_is_idempotent"
+
+mkdir -p "$REPO/.kimiflow/skip-run"
+out="$(run_router review-run --run .kimiflow/skip-run --write --skip "intentionally trivial run")"
+assert_jq "$out" '.status == "skipped" and .recorded_count == 0 and .written == true' "review_run_allows_explicit_skip"
+out="$(run_router verify-run --run .kimiflow/skip-run)"
+printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=skipped' && pass "verify_run_opens_explicit_skip" || fail "verify_run_opens_explicit_skip"
+
 awk 'BEGIN{for(i=0;i<950;i++) printf "word "}' > "$REPO/.kimiflow/project/MEMORY.md"
 out="$(run_router status)"
 assert_jq "$out" '.memory.over_budget == true and (.curation.reasons | index("memory_over_budget"))' "over_budget_memory_recommends_curation"

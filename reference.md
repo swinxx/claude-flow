@@ -609,6 +609,9 @@ files work without any API key, subscription, or MCP server.
   LEARNINGS.jsonl    evidence-backed durable learnings
   MEMORY-INDEX.json  cheap lookup/curation index
   RECALL.md          last/project recall log, or run-local recall when written there
+
+.kimiflow/<slug>/
+  LEARNING-REVIEW.md required run-close artifact; recorded or explicitly skipped
 ```
 
 **Helper:** `hooks/memory-router.sh` is the mechanical source for local memory state, recall, classification,
@@ -620,6 +623,8 @@ memory-router.sh status [--root <path>] [--pretty]
 memory-router.sh recall --query <text>|--query-file <path> [--max <n>] [--write <path>]
 memory-router.sh classify --input <path>|--text <text>
 memory-router.sh record --summary <text> --topic <topic> --evidence <ref>...
+memory-router.sh review-run --run <path> [--write] [--skip <reason>]
+memory-router.sh verify-run --run <path>
 memory-router.sh curate [--write]
 ```
 
@@ -641,12 +646,24 @@ memory-router.sh curate [--write]
 6. Old run artifacts only when their slug/paths match.
 7. Web research only for uncovered, stale, or fast-moving external facts.
 
-**Post-run learning loop:** after verification/review, extract candidate learnings from `RESEARCH.md` /
-`DIAGNOSIS.md`, `PLAN.md`, `CODE-REVIEW.md`, changed files, tests, and surprises. For each candidate:
+**Post-run learning loop (required before `Status: done`):** after verification/review and before closing
+`STATE.md`, run `memory-router.sh review-run --run .kimiflow/<slug> --write`. It creates the run-local
+`LEARNING-REVIEW.md`, appends durable rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`, and refreshes
+`MEMORY-INDEX.json`. Then run `memory-router.sh verify-run --run .kimiflow/<slug>`; `CLOSED` blocks the run
+from being marked done. Trivial runs may use `review-run --write --skip "<reason>"`, but the reason must be
+written to `LEARNING-REVIEW.md` and verified. Summaries should be in the user's language.
 
-- Run `memory-router.sh classify` or apply the same categories manually when a tool is unavailable.
+**Four-question schema:** every non-skipped review records only compact, verified answers to:
+
+- `what_was_learned` — what reusable fact/pattern did this run prove?
+- `which_project_rule_was_confirmed` — which project convention or workflow rule was confirmed?
+- `which_trap_or_pitfall_appeared` — what mistake, risk, or surprise should future runs avoid?
+- `which_decision_remains_important` — which decision still matters for future changes?
+
+**Storage classification:** `review-run` uses the same classifier as `classify`/`record`:
+
 - `run_only`: keep in the run folder; do not promote.
-- `project_memory`: record via `memory-router.sh record` with evidence and source commit.
+- `project_memory`: record locally with evidence and source commit.
 - `vault`: save a curated note only if a Vault MCP is connected and the sensitivity allows it.
 - `repo_doc_candidate`: do not write raw; include only through an explicit repo-doc action and publish-safe rules.
 - `skip`: trivial, duplicate, speculative, or not evidence-backed.
@@ -659,10 +676,10 @@ memory-router.sh curate [--write]
   token values, private paths, or raw risk findings into repo docs.
 
 **Curator:** `memory-router.sh status` reports `curation.recommended` and reasons such as `memory_over_budget`,
-`stale_learnings`, `superseded_learnings`, `memory_index_missing`, or `many_learnings`. `curate --write` is
-non-destructive in V1: it writes/refreshes `MEMORY-INDEX.json`, reports the same curation reasons, and does not
-delete or rewrite learnings. Destructive dedupe, summary rewrites, and stale pruning require a later explicit
-curation slice.
+`stale_learnings`, `superseded_learnings`, `memory_index_missing`, or `many_learnings`. `review-run --write`
+refreshes the small always-on `MEMORY.md`; `curate --write` is non-destructive in V1 and writes/refreshes
+`MEMORY-INDEX.json`. Neither command deletes or rewrites existing learning rows. Destructive dedupe, summary
+rewrites, and stale pruning require a later explicit curation slice.
 
 ---
 
