@@ -596,6 +596,70 @@ later-added provider is used automatically on the **next run**, once its MCP is 
 
 ---
 
+## Current-State Gate (Phase 2)
+
+The current-state gate protects specs and plans from stale model knowledge when the work touches fast-moving
+technology. It is **not** a web crawler and not a blanket research requirement. It is a small mechanical
+resolver that tells the orchestrator when current primary-source evidence is required before finalizing a spec
+or plan.
+
+Helper:
+
+```text
+hooks/current-state-gate.sh assess --input <INTENT.md|PROBLEM.md|AUDIT-INTENT.md> [--pretty]
+hooks/current-state-gate.sh verify --assessment .kimiflow/<slug>/CURRENT-STATE.json --recall <CURRENT-STATE.md|RECALL.md>
+```
+
+`assess` writes JSON with:
+
+```json
+{
+  "schema_version": 1,
+  "current_state_risk": "high",
+  "current_state_reasons": ["host_or_plugin_surface"],
+  "freshness_horizon": "30d",
+  "required_source_types": ["official_docs", "release_notes", "schema_or_manifest"],
+  "status": "required"
+}
+```
+
+Risk behavior:
+
+| risk | meaning | behavior |
+|---|---|---|
+| `low` | local code/docs work or stable project convention | no current-source check required |
+| `medium` | library/API/tooling may have changed | use fresh memory/vault hit or a short primary-source check |
+| `high` | host/plugin/hook/MCP/marketplace, security/auth/payments/privacy/deployment, external services | primary-source evidence required before spec/plan finalization |
+
+High-risk examples: Codex or Claude Code plugin behavior, hooks, skills, MCP, marketplaces, new/changed SDKs,
+auth/security/payment/privacy/deployment flows, App Store/marketplace/release mechanics, hosted APIs.
+
+`verify` emits one stable line:
+
+```text
+CURRENT_STATE_GATE	OPEN|CLOSED	risk=<risk>	reason=<code>	detail=<detail>
+```
+
+For `high`, `OPEN` requires a recall artifact with:
+
+```text
+Status: checked
+
+- source_type: official_docs
+  source_url: https://example.com/current-doc
+  summary: ...
+```
+
+Accepted primary `source_type` values are `official_docs`, `release_notes`, `schema_or_manifest`, and
+`official_github`. If current sources contradict a stored learning, mark the stored learning `stale` or
+`superseded` and do not use it as truth.
+
+Gate rule: `CURRENT_STATE_GATE CLOSED` means do not finalize `RESEARCH.md`/`DIAGNOSIS.md`, `PLAN.md`, or a
+spec. Research the current primary source, record the evidence in `CURRENT-STATE.md` or `RECALL.md`, then
+run `verify` again.
+
+---
+
 ## Vault conventions (Phase 2)
 
 The vault is an **optional** notes MCP (e.g. Obsidian — `obsidian_simple_search`, `obsidian_get_file_contents`, `obsidian_append_content`). **No vault MCP → skip, note in STATE.md** — the repo-local `.kimiflow/` memory still works. Notes follow the **user's language**, never a fixed one.

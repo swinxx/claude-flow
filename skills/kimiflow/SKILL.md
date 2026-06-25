@@ -56,6 +56,7 @@ Use the bundled scripts as the only mechanical source of truth:
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-build-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-verbosity.sh`
+- `$KIMIFLOW_PLUGIN_ROOT/hooks/current-state-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/test-weakening-scan.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/secret-content-scan.sh`
