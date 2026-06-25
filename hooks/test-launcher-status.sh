@@ -109,7 +109,29 @@ cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
 ### 2. Second
 EOF
 out="$(run_status)"
-assert_jq "$out" '.findings.open == 2 and .improvements.open == 2' "findings_and_improvements_counted"
+assert_jq "$out" '.findings.open == 2 and .improvements.open == 2' "findings_and_improvements_counted_de"
+
+cat > "$REPO/.kimiflow/project/FINDINGS.md" <<'EOF'
+# Findings
+
+## Open
+
+### F-001
+### F-002
+
+## Done
+
+### F-000
+EOF
+cat > "$REPO/.kimiflow/project/IMPROVEMENTS.md" <<'EOF'
+# Improvements
+
+## Prioritized Slices
+
+### 1. First
+EOF
+out="$(run_status)"
+assert_jq "$out" '.findings.open == 2 and .improvements.open == 1' "findings_and_improvements_counted_en"
 
 mkdir -p "$REPO/.kimiflow/parked"
 cat > "$REPO/.kimiflow/parked/STATE.md" <<EOF

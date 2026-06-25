@@ -2,6 +2,17 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.29
+
+Fix **launcher open-item counts for English project-map artifacts**.
+
+### Fixed
+- `hooks/launcher-status.sh` now counts Findings and Improvements under German and English section
+  headings (`## Offen` / `## Open`, `## Priorisierte Slices` / `## Prioritized Slices`), matching
+  Kimiflow's user-language artifact rule.
+- `hooks/test-launcher-status.sh` now covers both DE and EN count formats so the launcher cannot silently
+  show `0` open items for English projects again.
+
 ## 0.1.28
 
 Ship the **context-aware Kimiflow Launcher** and publish-safe repo documentation.

@@ -38,10 +38,10 @@ state_value() {
 }
 
 count_section_items() {
-  local file="$1" heading="$2"
+  local file="$1" heading_re="$2"
   [ -f "$file" ] || { printf '0'; return 0; }
-  awk -v heading="$heading" '
-    $0 == heading { in_section = 1; next }
+  awk -v heading_re="$heading_re" '
+    $0 ~ heading_re { in_section = 1; next }
     in_section && /^## / { in_section = 0 }
     in_section && /^### / { count++ }
     END { print count + 0 }
@@ -151,8 +151,8 @@ fi
 
 FINDINGS_PATH=".kimiflow/project/FINDINGS.md"
 IMPROVEMENTS_PATH=".kimiflow/project/IMPROVEMENTS.md"
-FINDINGS_OPEN="$(count_section_items "$ROOT/$FINDINGS_PATH" "## Offen")"
-IMPROVEMENTS_OPEN="$(count_section_items "$ROOT/$IMPROVEMENTS_PATH" "## Priorisierte Slices")"
+FINDINGS_OPEN="$(count_section_items "$ROOT/$FINDINGS_PATH" '^##[[:space:]]+(Offen|Open)([[:space:]].*)?$')"
+IMPROVEMENTS_OPEN="$(count_section_items "$ROOT/$IMPROVEMENTS_PATH" '^##[[:space:]]+(Priorisierte Slices|Prioritized Slices)([[:space:]].*)?$')"
 
 REPO_DOCS_PRESENT=false
 if [ -d "$ROOT/docs" ] && find "$ROOT/docs" -maxdepth 2 -type f -name '*.md' -print -quit 2>/dev/null | grep -q .; then
