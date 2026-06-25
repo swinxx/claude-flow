@@ -21,6 +21,10 @@ pv="$(jq -r '.version' "$ROOT/.claude-plugin/plugin.json" 2>/dev/null)"
 if [ -n "$cv" ] && [ "$cv" = "$pv" ]; then ok "version consistent with Claude manifest ($cv)"; else bad "version mismatch: codex=$cv claude=$pv"; fi
 jq -e '.name == "kimiflow" and .skills == "./skills/" and (.interface.displayName | length > 0)' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin shape" || bad "codex plugin shape"
+jq -e '(.interface.defaultPrompt // []) | any(test("codebase|architecture|refactoring|Document"))' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "codex plugin Project Intelligence prompts visible" || bad "codex plugin Project Intelligence prompts missing"
+jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "")) | test("codebase|architecture|project intelligence")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "codex plugin describes project intelligence" || bad "codex plugin description does not mention project intelligence"
 jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.path == "./"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
 

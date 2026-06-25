@@ -2,9 +2,15 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
-## Unreleased
+## 0.1.26
+
+Ship **Codex plugin visibility improvements** so the Project Intelligence capability is visible in the
+Codex plugin detail view and CLI update docs.
 
 ### Changed
+- Codex plugin display metadata now surfaces Project Intelligence in the plugin detail view: default
+  prompts include codebase mapping, architecture/refactoring opportunities, and project documentation,
+  and the Codex description mentions `.kimiflow/project/` codebase understanding.
 - Codex install docs now recommend the Git marketplace (`swinxx/kimiflow`) for normal installs so
   `codex plugin marketplace upgrade kimiflow` works. Local path marketplaces are documented as a
   development mode because Codex shows the local manifest version but does not upgrade that source type.
