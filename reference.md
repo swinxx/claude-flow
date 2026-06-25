@@ -275,6 +275,92 @@ Keep all three **flat markdown and short**. This is the lightweight version of s
 
 ---
 
+## Project Map Bootstrap (Phase 0 offer · Phase 2 read)
+
+Creates a local, evidence-backed project map so future feature/fix/audit runs start with a compact
+understanding of what already exists. It is **recommended, skippable, and never a prerequisite**:
+missing or stale project maps may reduce speed/context quality, but they do not block kimiflow.
+
+**Source of truth:** `.kimiflow/project/` at the git root. This local folder is the durable machine
+and human project-intelligence cache. Vault notes and repo docs are later publishing layers, not the
+authoritative cache for Slice 1.
+
+**Trigger:**
+- `--project-map quick|standard|deep` → run the bootstrap/update at that depth and STOP after reporting paths.
+- `--project-map skip` → record `project_map: skipped` in the active `STATE.md` and continue.
+- Normal non-trivial run + missing `.kimiflow/project/INDEX.json` → offer once, with `standard`
+  recommended. Decline/headless/no answer/skip → continue normally.
+- `trivial` runs do not offer the bootstrap unless the user explicitly passes `--project-map`.
+
+**Depths (token budget by design):**
+| depth | purpose | reads |
+|---|---|---|
+| `quick` | fast orientation before immediate coding | manifests, top-level structure, entry points, tests, critical deps |
+| `standard` | default/recommended project understanding | quick + central modules, architecture model, core flows, conventions, test strategy, open questions |
+| `deep` | onboarding, major feature, audit/refactor prep | standard + module notes, critical flows, scalability/maintainability/security concerns |
+| `skip` | no map this run | no project-map files written |
+
+**Artifacts (Slice 1):**
+```
+.kimiflow/project/
+  INDEX.json
+  FACTS.jsonl
+  CODEBASE.md
+  ARCHITECTURE.md
+  CONVENTIONS.md
+  TESTING.md
+  FLOWS.md
+  OPEN-QUESTIONS.md
+```
+
+`INDEX.json` is the cheap first read for future runs. Minimum keys:
+```json
+{
+  "schema_version": 1,
+  "language": "de",
+  "scan_depth": "standard",
+  "baseline_commit": "cba4942",
+  "created_at": "2026-06-25T00:00:00Z",
+  "sections": {},
+  "artifacts": {}
+}
+```
+Use `NOT VERIFIED` for `baseline_commit` if there is no git repository. `sections` may be shallow in
+Slice 1; Slice 2 adds per-section staleness and hashes.
+
+`FACTS.jsonl` is the compact evidence layer. One JSON object per line, stable English keys, concise
+human text in the user's language:
+```json
+{"kind":"entrypoint","area":"hooks","path":"hooks/commit-secret-gate.sh","line":1,"summary":"Commit-Hygiene-Hook fuer git add/commit","confidence":"high","commit":"cba4942"}
+```
+
+**Human-readable language rule:** `CODEBASE.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`, `TESTING.md`,
+`FLOWS.md`, `OPEN-QUESTIONS.md`, chat prompts, and summaries use the user's language. Preserve code
+identifiers, paths, command names, schema keys, required tokens, and package names as-is.
+
+**Mapper focuses (folded or delegated):**
+- Tech: stack, package managers, dependencies, external integrations.
+- Structure: directory layout, entry points, where to add common kinds of code.
+- Architecture: components, responsibilities, data/control flow, invariants.
+- Quality: conventions, test strategy, verification commands.
+- Synthesis: writes/updates `INDEX.json`, compacts `FACTS.jsonl`, lists `OPEN-QUESTIONS.md`.
+
+Each mapper writes directly to `.kimiflow/project/`; the orchestrator reports paths and does **not**
+paste full artifacts back into chat. If subagents are unavailable, perform the same passes sequentially
+using filesystem tools (`rg`, `find`, `git`, manifest reads). Do not read `.env` contents.
+
+**Evidence rules:**
+- Every architectural claim needs `file:line`, commit SHA, hash, or `NOT VERIFIED`.
+- Prefer facts that future plans can reuse: where code lives, how to test, which pattern to match,
+  what not to touch, and which unknowns remain.
+- Do not store speculative improvements in Slice 1. Improve/refactoring lenses are Slice 3 and opt-in.
+
+**Phase 2 consumption:** before fresh code exploration, read `INDEX.json`, then only the relevant
+`FACTS.jsonl` lines and markdown sections. If the map is absent or skipped, continue with the existing
+Phase 2 memory/codebase research path unchanged.
+
+---
+
 ## Memory recall (Phase 2)
 
 Before researching, search whatever **optional memory providers** are connected — recall beats

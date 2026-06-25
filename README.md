@@ -114,6 +114,7 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 /kimiflow --fix <bug>        # force fix mode
 /kimiflow <…> --prepare      # prepare only (through plan-gate), implement later
 /kimiflow --resume <slug>    # continue a prepared/interrupted run in a fresh session
+/kimiflow --project-map standard  # recommended, skippable project map bootstrap
 ```
 
 In Codex, use the same arguments with `$kimiflow`:
@@ -122,7 +123,21 @@ In Codex, use the same arguments with `$kimiflow`:
 $kimiflow <feature>
 $kimiflow --fix <bug>
 $kimiflow --resume <slug>
+$kimiflow --project-map standard
 ```
+
+## Project map bootstrap
+
+On non-trivial runs, if `.kimiflow/project/INDEX.json` is missing, kimiflow can offer a recommended but skippable **Project Map Bootstrap**. It creates a local project-intelligence cache under `.kimiflow/project/`: `INDEX.json`, `FACTS.jsonl`, and compact markdown notes for codebase, architecture, conventions, tests, flows, and open questions. Future runs read this first so they can understand what already exists before planning a bug fix or feature.
+
+Depths:
+
+- `quick` — stack, structure, entry points, tests, critical dependencies.
+- `standard` — recommended: quick + architecture model, central modules, flows, conventions.
+- `deep` — standard + more module notes and scalability/maintainability/security concerns.
+- `skip` — continue without creating the map.
+
+The map is local and optional. Missing, skipped, or incomplete maps never block the normal kimiflow loop.
 
 ## Example
 
@@ -298,6 +313,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 /kimiflow --fix <bug>        # Fix-Modus erzwingen
 /kimiflow <…> --prepare      # nur vorbereiten (bis Plan-Gate), später umsetzen
 /kimiflow --resume <slug>    # vorbereiteten/abgebrochenen Lauf in neuer Session fortsetzen
+/kimiflow --project-map standard  # empfohlene, überspringbare Projektkarte anlegen
 ```
 
 In Codex nutzt du dieselben Argumente mit `$kimiflow`:
@@ -306,7 +322,21 @@ In Codex nutzt du dieselben Argumente mit `$kimiflow`:
 $kimiflow <feature>
 $kimiflow --fix <bug>
 $kimiflow --resume <slug>
+$kimiflow --project-map standard
 ```
+
+## Project-Map-Bootstrap
+
+Bei nicht-trivialen Läufen kann kimiflow eine empfohlene, aber überspringbare **Projektkarte** anbieten, wenn `.kimiflow/project/INDEX.json` fehlt. Sie legt lokale Projektintelligenz unter `.kimiflow/project/` an: `INDEX.json`, `FACTS.jsonl` und kompakte Markdown-Notizen zu Codebase, Architektur, Konventionen, Tests, Flows und offenen Fragen. Spätere Läufe lesen das zuerst, damit Bugfixes und Features nicht jedes Mal blind starten.
+
+Tiefen:
+
+- `quick` — Stack, Struktur, Entry Points, Tests, wichtige Dependencies.
+- `standard` — empfohlen: quick + Architekturmodell, zentrale Module, Flows, Konventionen.
+- `deep` — standard + mehr Modulnotizen und Skalierbarkeits-/Wartbarkeits-/Security-Concerns.
+- `skip` — ohne Projektkarte weiterlaufen.
+
+Die Projektkarte ist lokal und optional. Fehlende, übersprungene oder unvollständige Maps blockieren den normalen kimiflow-Loop nie.
 
 ## Beispiel
 

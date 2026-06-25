@@ -2,6 +2,15 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## Unreleased
+
+### Added
+- **Project Map Bootstrap (Slice 1)** docs/contract for a recommended, skippable project-intelligence
+  cache under `.kimiflow/project/`. Kimiflow now documents `--project-map quick|standard|deep|skip`,
+  the local artifacts (`INDEX.json`, `FACTS.jsonl`, `CODEBASE.md`, `ARCHITECTURE.md`, `CONVENTIONS.md`,
+  `TESTING.md`, `FLOWS.md`, `OPEN-QUESTIONS.md`), user-language output, and token-efficient mapper
+  focus rules. This is the foundation for later per-section staleness and Vault/repo-doc publishing.
+
 ## 0.1.24
 
 Ship **Codex plugin parity** for kimiflow while keeping the Claude Code path intact.

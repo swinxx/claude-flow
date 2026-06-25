@@ -34,6 +34,9 @@ printf '%s\n' "$fm" | grep -qi 'explicitly asks' && ok "opt-in guard present" ||
 [ -f "$ROOT/skills/kimiflow/agents/openai.yaml" ] && ok "Codex skill metadata exists" || bad "missing agents/openai.yaml"
 grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh' "$SKILL" && ok "skill uses absolute plugin-root helper paths" || bad "skill does not use plugin-root helper paths"
 if grep -q '\.\./\.\./hooks/' "$SKILL"; then bad "skill still documents cwd-sensitive ../../hooks paths"; else ok "skill avoids cwd-sensitive ../../hooks paths"; fi
+grep -q -- '--project-map <quick|standard|deep|skip>' "$SKILL" && ok "Codex wrapper maps project-map invocation" || bad "Codex wrapper missing project-map invocation mapping"
+grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
+grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 
 echo "== codex plugin hook wiring (optional while plugin_hooks is unavailable) =="
 while IFS= read -r cmd; do

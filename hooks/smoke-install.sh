@@ -30,11 +30,19 @@ fm="$(awk 'NR==1 && $0=="---"{f=1;next} f && $0=="---"{exit} f' "$ROOT/SKILL.md"
 printf '%s\n' "$fm" | grep -qE '^name:[[:space:]]*kimiflow'                 && ok "name: kimiflow"                       || bad "name missing/wrong"
 printf '%s\n' "$fm" | grep -qE '^description:'                              && ok "description present"                  || bad "description missing"
 printf '%s\n' "$fm" | grep -qE '^argument-hint:'                            && ok "argument-hint present"                || bad "argument-hint missing"
+printf '%s\n' "$fm" | grep -q -- '--project-map <quick|standard|deep|skip>'   && ok "project-map argument hint present"     || bad "project-map argument hint missing"
 # Model-invocation is ENABLED (opt-in, on-request — the "invoke only when asked" policy lives in the
 # description, not a hard flag). It must NOT be `true`, or the model can't launch kimiflow on request.
 if printf '%s\n' "$fm" | grep -qE '^disable-model-invocation:[[:space:]]*true'; then bad "disable-model-invocation: true → model can't launch kimiflow on request"; else ok "model-invocable (disable-model-invocation not true) — opt-in/on-request per description"; fi
 # user-invocable defaults true; it must NOT be false or /kimiflow vanishes from the slash menu.
 if printf '%s\n' "$fm" | grep -qE '^user-invocable:[[:space:]]*false'; then bad "user-invocable: false → /kimiflow hidden from the slash menu"; else ok "user-invocable not disabled (slash-invocable)"; fi
+
+echo "== project map bootstrap contract =="
+grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical skill documents Project Map Bootstrap" || bad "missing Project Map Bootstrap in SKILL.md"
+grep -q -- '--project-map quick|standard|deep' "$ROOT/reference.md" && ok "reference documents project-map depths" || bad "missing project-map depths in reference.md"
+for term in INDEX.json FACTS.jsonl CODEBASE.md ARCHITECTURE.md CONVENTIONS.md TESTING.md FLOWS.md OPEN-QUESTIONS.md; do
+  grep -q "$term" "$ROOT/reference.md" && ok "project map artifact documented: $term" || bad "project map artifact missing: $term"
+done
 
 echo "== hooks wiring (referenced scripts exist, executable, valid) =="
 while IFS= read -r cmd; do
