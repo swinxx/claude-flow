@@ -86,6 +86,15 @@ hygiene pass, not an implementation mode:
 - Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons. Offer
   `recall for current task`, `curate index`, `show current learnings`, `back`; do not dump full Vault notes or
   full `LEARNINGS.jsonl`.
+- Vault/Obsidian: if `provider.available` is false but `provider.detection.available` is true, offer
+  `Obsidian verbinden`. This runs `memory-router.sh provider connect`, writes only
+  `.kimiflow/project/VAULT-PROVIDER.json`, then offers `provider sync --write` to create the local
+  `VAULT-SYNC.md` handoff. If `provider.health.status` is `connected_local_only`, offer `Obsidian MCP einrichten`
+  and prefer `hooks/vault-mcp-open-terminal.sh --host <current-host>` on macOS, or
+  `hooks/vault-mcp-setup.sh --host <current-host> --interactive` as the plain-terminal fallback, so the API key is
+  entered only in the user's Terminal, not chat. If it is `authenticated`, distinguish local REST API validation
+  from actual direct MCP tools before offering targeted Vault prefetch/sync. It does not store an API key in
+  `.kimiflow/` and does not write external Vault notes blindly.
 - Vague idea/spec: route to existing Explore/Prepare in V1. Native `--spec` is a follow-up slice, not part of
   launcher V1.
 
@@ -645,7 +654,7 @@ memory-router.sh curate [--write]
 memory-router.sh index [--write]
 memory-router.sh consolidate [--write]
 memory-router.sh propose [--write] [--approve <id>] [--reject <id>] [--reason <why>] [--apply]
-memory-router.sh provider <status|configure|prefetch|sync> [--type <obsidian|none>] [--available <true|false>] [--path <path>]
+memory-router.sh provider <status|health|setup|detect|connect|configure|prefetch|sync> [--type <obsidian|none>] [--available <true|false>] [--path <path>] [--host <codex|claude|all>]
 ```
 
 **Pre-run hydration:**
@@ -662,7 +671,7 @@ memory-router.sh provider <status|configure|prefetch|sync> [--type <obsidian|non
 2. Project map index and relevant facts/sections (`INDEX.json`, `FACTS.jsonl`, selected markdown).
 3. Local FTS5 recall (`RECALL.sqlite`) when available, plus `LEARNINGS.jsonl`/`USER.jsonl` and old-run fallback hits.
 4. On-demand run/session history via `history` or `recall`'s `sources.history` hits.
-5. Vault/claude-mem recall when connected.
+5. Vault/claude-mem recall when connected and, for direct Vault access, direct MCP tools are ready.
 6. Current-state primary-source check when the Current-State Gate requires it.
 7. Web research only for uncovered, stale, or fast-moving external facts.
 
@@ -715,15 +724,34 @@ is available. It indexes bounded memory, user profile, current learnings, facts,
 `curate --write` and `review-run --write` refresh it opportunistically. `recall` reports index hits without
 requiring the index; missing SQLite falls back to JSONL and run-history matching.
 
-**Optional Vault provider:** `memory-router.sh provider status` exposes the local provider manifest. `provider
-configure --type obsidian --available true --path <vault>` writes `.kimiflow/project/VAULT-PROVIDER.json`;
-`provider prefetch --query "<task>" --write` writes a bounded `VAULT-PREFETCH.md` handoff for an Obsidian/Vault
-MCP before research. `provider sync --write` writes `.kimiflow/project/VAULT-SYNC.md`, a bounded handoff of only
-current, non-private, non-security learnings with freshly verified repo-relative evidence. It exports at most
-`${KIMIFLOW_PROVIDER_SYNC_MAX:-20}` candidates per run, records only those exported IDs in the manifest, and
-leaves omitted candidates pending so later `status` can report whether another Vault sync is needed. The router
-never requires a paid provider or API key, never blocks when the provider is absent, and does not patch skills or
-write external Vault notes blindly.
+**Optional Vault provider:** `memory-router.sh provider status` exposes the local provider manifest and
+auto-detects a running Obsidian Local REST API on `https://127.0.0.1:27124` or `http://127.0.0.1:27123` when no
+provider is configured. `provider health` returns the compact state machine: `not_detected`,
+`detected_unconfigured`, `connected_local_only`, `authenticated`, or `auth_failed`, plus the recommended next
+action. `provider setup --host <codex|claude|all>` returns a safe setup plan for the built-in Obsidian Local
+REST API MCP endpoint (`/mcp/`) and recommends `hooks/vault-mcp-open-terminal.sh --host <host>` for interactive
+macOS setup, with `hooks/vault-mcp-setup.sh --host <host> --interactive` as the plain-terminal fallback. That
+launcher opens Terminal.app and runs `hooks/vault-mcp-setup.sh --interactive`, where the user pastes the key into
+a hidden terminal prompt; Codex config can be written to user-level `~/.codex/config.toml`, Claude Code can use a
+`headersHelper` script, and the key can live in macOS Keychain or the host environment instead of `.kimiflow/`.
+Codex uses `bearer_token_env_var = "OBSIDIAN_API_KEY"`, while Claude Code uses a `headersHelper`
+script created by `hooks/vault-mcp-setup.sh` outside the repo. The helper can read `OBSIDIAN_API_KEY` or macOS
+Keychain service `kimiflow.obsidian.api-key` at connection time; it stores no token and refuses non-loopback URLs. `provider
+detect` previews detection; `provider connect` (or `provider detect --write`) writes only
+`.kimiflow/project/VAULT-PROVIDER.json`. It stores the local URL and detection metadata, never an Obsidian API
+key or auth material. A local API key environment variable such as `OBSIDIAN_API_KEY`/
+`KIMIFLOW_OBSIDIAN_API_KEY` can validate the loopback Local REST API, but direct Vault search/write is ready
+only when `provider.health.direct_search_ready` / `provider.health.direct_write_ready` are true from an
+authenticated MCP tool provider; token values are never written to `.kimiflow/` and are never probed against
+non-loopback URLs. `provider configure --type obsidian --available true --path <vault>` remains the manual
+fallback. `provider prefetch --query "<task>" --write` writes a bounded `VAULT-PREFETCH.md` handoff before
+research and marks whether direct search is ready. `provider sync --write` writes
+`.kimiflow/project/VAULT-SYNC.md`, a bounded review handoff of only current, non-private, non-security learnings
+with freshly verified repo-relative evidence, and marks whether direct write is ready.
+It exports at most `${KIMIFLOW_PROVIDER_SYNC_MAX:-20}` candidates per run, records only those exported IDs in the
+manifest, and leaves omitted candidates pending so later `status` can report whether another Vault sync is
+needed. The router never requires a paid provider or API key, never blocks when the provider is absent, and does
+not patch skills or write external Vault notes blindly.
 
 **Consolidation:** `memory-router.sh consolidate --write` archives superseded learning rows to
 `LEARNINGS.archive.jsonl`, refreshes bounded memory/profile/index files, and never silently deletes data. It is
@@ -762,7 +790,8 @@ patch `SKILL.md`, `reference.md`, or repo docs automatically. Approve/apply reva
 
 **Curator:** `memory-router.sh status` reports `curation.recommended` and reasons such as `memory_over_budget`,
 `stale_learnings`, `superseded_learnings`, `learning_lifecycle_review_due`, `memory_index_missing`, `recall_index_missing`,
-`provider_sync_pending`, `learning_proposals_pending`, `learning_proposals_approved`,
+`provider_sync_pending`, `provider_detected_unconfigured`, `provider_auth_required`, `provider_auth_failed`,
+`learning_proposals_pending`, `learning_proposals_approved`,
 `learning_proposals_need_revalidation`, or `many_learnings`.
 `review-run --write` refreshes the small always-on `MEMORY.md`; `curate --write` writes/refreshes
 `MEMORY-INDEX.json`, lifecycle metrics, provider status, and the optional recall index. Row archival is explicit
@@ -857,8 +886,14 @@ run `verify` again.
 
 ## Vault conventions (Phase 2)
 
-The vault is an **optional** notes MCP (e.g. Obsidian — `obsidian_simple_search`, `obsidian_get_file_contents`, `obsidian_append_content`). **No vault MCP → skip, note in STATE.md** — the repo-local `.kimiflow/` memory still works. Notes follow the **user's language**, never a fixed one.
+The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in `search_simple`, `vault_read`, `vault_append`/`vault_write`, or compatible legacy `obsidian_*` tools). **No vault MCP/auth → skip direct reads/writes, note the provider health in STATE.md, and continue with local handoffs** — the repo-local `.kimiflow/` memory still works. Notes follow the **user's language**, never a fixed one.
 
+- **Health first.** Before direct Vault search/write, run `memory-router.sh provider health`. Use direct Vault
+  search/write only when `provider.health.direct_search_ready` / `provider.health.direct_write_ready` are true.
+  `authenticated` may mean the local REST API key validated successfully, not that a direct MCP tool is present.
+  If it is `detected_unconfigured`, connect locally first; if `connected_local_only`, create
+  `VAULT-PREFETCH.md`/`VAULT-SYNC.md` and offer the Terminal setup wizard from `provider setup`; if
+  `auth_failed`, do not retry blindly.
 - **Router decides what is vault-worthy.** Do not ask the user to babysit every write. Classify candidate
   learnings through "Memory Router & Learning Loop"; write to Vault automatically only when the classification
   is `vault`, the evidence is strong enough, and sensitivity is not `security`. Security-sensitive concrete

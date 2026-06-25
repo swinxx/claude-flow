@@ -138,6 +138,127 @@ assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-USAGE.json")" '.items | to_entr
 
 out="$(run_router provider status)"
 assert_jq "$out" '.available == false and .type == "none"' "provider_status_defaults_local_only"
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+url=""
+config_stdin=0
+prev=""
+for arg in "$@"; do
+  case "$arg" in
+    http://*|https://*) url="${arg%/}" ;;
+  esac
+  if [ "$prev" = "--config" ] && [ "$arg" = "-" ]; then
+    config_stdin=1
+  fi
+  prev="$arg"
+done
+if [ "$config_stdin" -eq 1 ]; then
+  config="$(cat)"
+  if [ -n "${KIMIFLOW_CURL_CAPTURE:-}" ]; then
+    printf '%s\n' "$config" >> "$KIMIFLOW_CURL_CAPTURE"
+  fi
+  case "$url" in
+    https://127.0.0.1:27124/vault)
+      case "$config" in
+        *"Authorization: Bearer test-token"*)
+          printf '200'
+          exit 0
+          ;;
+      esac
+      printf '401'
+      exit 0
+      ;;
+  esac
+fi
+case "$url" in
+  https://127.0.0.1:27124)
+    printf '{"status":"OK","manifest":{"id":"obsidian-local-rest-api","name":"Local REST API with MCP","version":"4.1.3"}}'
+    exit 0
+    ;;
+esac
+exit 7
+EOF
+chmod +x "$WORK/bin/curl"
+out="$(PATH="$WORK/bin:$PATH" run_router provider status)"
+assert_jq "$out" '.available == false and .type == "none" and .detection.available == true and .detection.url == "https://127.0.0.1:27124" and .detection.direct_write_requires_token == true and .auth.status == "auth_required" and .auth.token_stored == false and .health.status == "detected_unconfigured" and .health.recommended_action == "connect" and .capabilities.search == false' "provider_status_detects_obsidian_unconfigured"
+out="$(PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "detected_unconfigured" and .recommended_action == "connect" and .auth.status == "auth_required" and .capabilities.write_review == false' "provider_health_reports_detected_unconfigured"
+out="$(PATH="$WORK/bin:$PATH" run_router status)"
+assert_jq "$out" '.provider.sync.status == "provider_detected_unconfigured" and .provider.sync.exportable_count >= 1 and (.curation.reasons | index("provider_detected_unconfigured")) and (.curation.reasons | index("provider_sync_pending") | not)' "status_surfaces_detected_unconfigured_provider"
+out="$(PATH="$WORK/bin:$PATH" run_router provider detect)"
+assert_jq "$out" '.status == "detected" and .written == false and .detection.available == true and .provider.available == false' "provider_detect_previews_obsidian"
+out="$(PATH="$WORK/bin:$PATH" run_router provider connect)"
+assert_jq "$out" '.status == "connected" and .written == true and .provider.available == true and .provider.configured == true and .provider.vault_path == "https://127.0.0.1:27124"' "provider_connect_writes_detected_obsidian_manifest"
+assert_jq "$(cat "$REPO/.kimiflow/project/VAULT-PROVIDER.json")" '.type == "obsidian" and .available == true and .vault_path == "https://127.0.0.1:27124" and (.detection.direct_write_requires_token == true) and (.auth? | not)' "provider_connect_manifest_keeps_detection_metadata_without_auth"
+out="$(PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "connected_local_only" and .recommended_action == "setup_auth" and .auth.status == "auth_required" and (.auth.setup_hint | contains("provider setup")) and .capabilities.write_review == true and .capabilities.search == false' "provider_health_reports_connected_local_only"
+out="$(OBSIDIAN_API_KEY=test-token PATH="$WORK/bin:$PATH" run_router provider setup --host all)"
+assert_jq "$out" '.status == "setup_plan" and .blocked == false and .mcp.url == "https://127.0.0.1:27124/mcp/" and .secret_policy.stores_token == false and .secret_policy.writes_token_to_repo == false and (.hosts.codex.snippet | contains("bearer_token_env_var = \"OBSIDIAN_API_KEY\"")) and (.hosts.claude.snippet.mcpServers.obsidian.headersHelper == "~/.kimiflow/obsidian-mcp-headers.sh") and .helpers.claude_headers_helper == "~/.kimiflow/obsidian-mcp-headers.sh" and .hosts.codex.enabled == true and .hosts.claude.enabled == true and .helpers.terminal_setup == "hooks/vault-mcp-open-terminal.sh --host all" and .helpers.interactive_setup == "hooks/vault-mcp-setup.sh --host all --interactive" and .next_command == "hooks/vault-mcp-open-terminal.sh --host all"' "provider_setup_returns_safe_host_plan"
+if printf '%s\n' "$out" | grep -q "test-token"; then
+  fail "provider_setup_does_not_echo_env_token"
+else
+  pass "provider_setup_does_not_echo_env_token"
+fi
+if [ -n "${HOME:-}" ] && printf '%s\n' "$out" | grep -Fq "${HOME%/}/.kimiflow"; then
+  fail "provider_setup_uses_home_relative_helper_path"
+else
+  pass "provider_setup_uses_home_relative_helper_path"
+fi
+out="$(PATH="$WORK/bin:$PATH" run_router provider setup --host codex)"
+assert_jq "$out" '.status == "setup_plan" and .hosts.codex.enabled == true and .hosts.claude.enabled == false' "provider_setup_filters_host"
+out="$(PATH="$WORK/bin:$PATH" run_router status)"
+assert_jq "$out" '(.curation.reasons | index("provider_auth_required")) and .provider.health.status == "connected_local_only" and .provider.sync.auth_status == "auth_required"' "status_surfaces_provider_auth_required"
+out="$(KIMIFLOW_VAULT_AUTHENTICATED=true PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "authenticated" and .recommended_action == "prefetch_or_sync" and .auth.authenticated == true and .auth.source == "override" and .auth.token_stored == false and .capabilities.authenticated == true and .capabilities.search == false and .capabilities.mcp_direct_write == false and .health.direct_search_ready == false' "provider_health_reports_authenticated_override_without_direct_tools"
+out="$(KIMIFLOW_VAULT_MCP_AVAILABLE=true PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "authenticated" and .recommended_action == "prefetch_or_sync" and .auth.authenticated == true and .auth.source == "mcp" and .auth.token_stored == false and .capabilities.search == true and .capabilities.mcp_direct_write == true and .health.direct_search_ready == true and .health.direct_write_ready == true' "provider_health_reports_mcp_direct_tools"
+out="$(KIMIFLOW_VAULT_AUTHENTICATED=false PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "auth_failed" and .recommended_action == "check_auth" and .auth.authenticated == false and .auth.status == "auth_failed"' "provider_health_reports_auth_failed"
+out="$(OBSIDIAN_API_KEY=test-token PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "authenticated" and .auth.source == "env" and .auth.token_source == "OBSIDIAN_API_KEY" and .auth.token_env_present == true and .auth.token_stored == false and .auth.probe_allowed == true and .auth.probe_http_status == "200" and .capabilities.rest_api_authenticated == true and .capabilities.search == false and .health.rest_api_authenticated == true and .health.direct_write_ready == false' "provider_health_validates_env_token_without_storing_it"
+if printf '%s\n' "$out" | grep -q "test-token"; then
+  fail "provider_health_does_not_echo_env_token"
+else
+  pass "provider_health_does_not_echo_env_token"
+fi
+bad_token="$(printf 'bad\nthing')"
+out="$(OBSIDIAN_API_KEY="$bad_token" PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.auth.status == "token_unverified" and .auth.token_env_present == true and .auth.token_stored == false and .auth.probe_allowed == false and .auth.probe_blocked_reason == "multiline_token"' "provider_health_rejects_multiline_env_token_probe"
+if printf '%s\n' "$out" | grep -q "bad"; then
+  fail "provider_health_does_not_echo_rejected_env_token"
+else
+  pass "provider_health_does_not_echo_rejected_env_token"
+fi
+capture="$WORK/curl-capture.txt"
+rm -f "$capture"
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'JSON'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"https://evil.example","updated_at":"2026-01-02T00:00:00Z"}
+JSON
+out="$(PATH="$WORK/bin:$PATH" run_router provider setup --host codex)"
+assert_jq "$out" '.status == "blocked_non_loopback" and .blocked == true and .reason == "non_loopback_url" and .mcp.url == "" and .secret_policy.non_loopback_blocked == true and .hosts.codex.snippet == ""' "provider_setup_blocks_non_loopback_url"
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'JSON'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"https://127.0.0.1:27124/evil\"\n[mcp_servers.injected]\nurl = \"http://example.invalid\"","updated_at":"2026-01-02T00:00:00Z"}
+JSON
+out="$(PATH="$WORK/bin:$PATH" run_router provider setup --host codex)"
+assert_jq "$out" '.status == "blocked_non_loopback" and .blocked == true and .hosts.codex.snippet == "" and (.mcp.url == "")' "provider_setup_blocks_loopback_snippet_injection_url"
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'JSON'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"https://evil.example","updated_at":"2026-01-02T00:00:00Z"}
+JSON
+out="$(KIMIFLOW_CURL_CAPTURE="$capture" OBSIDIAN_API_KEY=secret-token PATH="$WORK/bin:$PATH" run_router provider health)"
+assert_jq "$out" '.status == "connected_local_only" and .auth.status == "token_unverified" and .auth.probe_allowed == false and .auth.probe_blocked_reason == "non_loopback_url" and .auth.probe_http_status == null and .capabilities.rest_api_authenticated == false' "provider_health_blocks_env_token_probe_to_non_loopback_url"
+if [ -s "$capture" ] || printf '%s\n' "$out" | grep -q "secret-token"; then
+  fail "provider_health_does_not_expose_env_token_to_non_loopback_url"
+else
+  pass "provider_health_does_not_expose_env_token_to_non_loopback_url"
+fi
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'JSON'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"https://old.example","last_prefetch_at":"2026-01-01T00:00:00Z","last_write_at":"2026-01-02T00:00:00Z","synced_learning_ids":["learn_existing"],"updated_at":"2026-01-02T00:00:00Z"}
+JSON
+out="$(PATH="$WORK/bin:$PATH" run_router provider connect)"
+assert_jq "$out" '.status == "connected" and .provider.vault_path == "https://127.0.0.1:27124"' "provider_connect_updates_detected_url"
+assert_jq "$(cat "$REPO/.kimiflow/project/VAULT-PROVIDER.json")" '.synced_learning_ids == ["learn_existing"] and .last_prefetch_at == "2026-01-01T00:00:00Z" and .last_write_at == "2026-01-02T00:00:00Z"' "provider_connect_preserves_existing_sync_metadata"
+rm -f "$REPO/.kimiflow/project/VAULT-PROVIDER.json"
 out="$(KIMIFLOW_VAULT_AVAILABLE=true run_router provider prefetch --query "env provider" --write)"
 assert_jq "$out" '.status == "prefetch_handoff" and .written == true' "provider_prefetch_env_available_writes_manifest"
 [ -f "$REPO/.kimiflow/project/VAULT-PROVIDER.json" ] && pass "provider_env_prefetch_creates_manifest" || fail "provider_env_prefetch_creates_manifest"
@@ -148,6 +269,11 @@ run_router curate --write >/dev/null
 out="$(run_router provider prefetch --query "memory router" --write)"
 assert_jq "$out" '.status == "prefetch_handoff" and .written == true' "provider_prefetch_writes_handoff"
 [ -f "$REPO/.kimiflow/project/VAULT-PREFETCH.md" ] && pass "provider_prefetch_writes_markdown" || fail "provider_prefetch_writes_markdown"
+if grep -q "Health: connected_local_only" "$REPO/.kimiflow/project/VAULT-PREFETCH.md" && grep -q "Direct search ready: false" "$REPO/.kimiflow/project/VAULT-PREFETCH.md"; then
+  pass "provider_prefetch_marks_auth_readiness"
+else
+  fail "provider_prefetch_marks_auth_readiness"
+fi
 out="$(run_router status)"
 assert_jq "$out" '.provider.available == true and .vault.available == true and .history.present == true and .usage.tracked_items >= 1' "status_surfaces_provider_history_usage"
 assert_jq "$out" '.vault.provider.last_prefetch_at != null and .vault.last_recall_at == .vault.provider.last_prefetch_at' "status_prefers_fresh_provider_prefetch_timestamp"
@@ -155,6 +281,11 @@ assert_jq "$out" '.provider.sync.pending_count >= 1 and (.curation.reasons | ind
 out="$(run_router provider sync --write)"
 assert_jq "$out" '.status == "sync_handoff" and .written == true and .candidates.count >= 1 and (.candidates.rows == null)' "provider_sync_writes_handoff"
 [ -f "$REPO/.kimiflow/project/VAULT-SYNC.md" ] && pass "provider_sync_writes_markdown" || fail "provider_sync_writes_markdown"
+if grep -q "Health: connected_local_only" "$REPO/.kimiflow/project/VAULT-SYNC.md" && grep -q "Direct write ready: false" "$REPO/.kimiflow/project/VAULT-SYNC.md"; then
+  pass "provider_sync_marks_auth_readiness"
+else
+  fail "provider_sync_marks_auth_readiness"
+fi
 if grep -q "Concrete credential" "$REPO/.kimiflow/project/VAULT-SYNC.md" || grep -q "$outside_evidence" "$REPO/.kimiflow/project/VAULT-SYNC.md"; then
   fail "provider_sync_excludes_private_and_security_rows"
 else

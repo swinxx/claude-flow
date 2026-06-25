@@ -5,13 +5,13 @@
     "name": "kimikon"
   },
   "metadata": {
-    "description": "kimiflow — a disciplined feature & bug-fix loop for Claude Code with real gates, project intelligence, bounded memory recall, and Vault sync handoffs."
+    "description": "kimiflow — a disciplined feature & bug-fix loop for Claude Code with real gates, project intelligence, bounded memory recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs."
   },
   "plugins": [
     {
       "name": "kimiflow",
-      "description": "Feature & bug-fix loop for Claude Code with real gates, project intelligence maps, token-cheap memory recall, and Vault sync handoffs. Replies in your language.",
-      "version": "0.1.35",
+      "description": "Feature & bug-fix loop for Claude Code with real gates, project intelligence maps, token-cheap memory recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs. Replies in your language.",
+      "version": "0.1.36",
       "author": {
         "name": "kimikon"
       },

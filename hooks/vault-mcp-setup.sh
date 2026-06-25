@@ -1,0 +1,377 @@
+#!/usr/bin/env bash
+# kimiflow - safe Obsidian MCP setup helper. User-run, not a hook.
+#
+# Usage:
+#   vault-mcp-setup.sh [--host codex|claude|all] [--url <loopback-url>] [--data-dir <dir>] [--write-helper] [--write-config] [--store-keychain] [--set-launch-env] [--verify] [--interactive]
+set -u
+
+usage() {
+  sed -n '1,7p' "$0" >&2
+}
+
+die() {
+  printf 'vault-mcp-setup: %s\n' "$1" >&2
+  exit "${2:-1}"
+}
+
+need_jq() {
+  command -v jq >/dev/null 2>&1 || die "jq is required to render safe JSON snippets" 2
+}
+
+normalize_loopback_origin() {
+  local url="$1" scheme rest host_port path host port suffix host_lc
+  url="${url%/}"
+  case "$url" in
+    *[[:space:]]*|*\"*|*\'*|*\\*|*\`*) return 1 ;;
+  esac
+  case "$url" in
+    http://*) scheme="http"; rest="${url#http://}" ;;
+    https://*) scheme="https"; rest="${url#https://}" ;;
+    *) return 1 ;;
+  esac
+  host_port="${rest%%/*}"
+  path=""
+  if [ "$rest" != "$host_port" ]; then
+    path="/${rest#*/}"
+  fi
+  case "$path" in
+    ""|"/"|"/mcp"|"/mcp/") ;;
+    *) return 1 ;;
+  esac
+
+  [ -n "$host_port" ] || return 1
+  case "$host_port" in
+    *@*) return 1 ;;
+  esac
+  case "$host_port" in
+    \[*\]*)
+      host="${host_port#\[}"
+      host="${host%%\]*}"
+      suffix="${host_port#*\]}"
+      case "$suffix" in
+        "") port="" ;;
+        :*) port="${suffix#:}" ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *)
+      host="${host_port%%:*}"
+      port=""
+      if [ "$host_port" != "$host" ]; then
+        port="${host_port#*:}"
+        case "$port" in
+          *:*) return 1 ;;
+        esac
+      fi
+      ;;
+  esac
+  host_lc="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+  case "$port" in
+    ""|*[!0-9]*) [ -z "$port" ] || return 1 ;;
+  esac
+  case "$host_lc" in
+    localhost|127.0.0.1)
+      if [ -n "$port" ]; then printf '%s://%s:%s\n' "$scheme" "$host_lc" "$port"; else printf '%s://%s\n' "$scheme" "$host_lc"; fi
+      ;;
+    ::1)
+      if [ -n "$port" ]; then printf '%s://[::1]:%s\n' "$scheme" "$port"; else printf '%s://[::1]\n' "$scheme"; fi
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+json_string() {
+  need_jq
+  jq -Rn --arg value "$1" '$value'
+}
+
+host_includes() {
+  local wanted="$1"
+  [ "$host" = "all" ] || [ "$host" = "$wanted" ]
+}
+
+write_headers_helper() {
+  local helper="$1" tmp
+  mkdir -p "$(dirname "$helper")" || die "cannot create helper directory: $(dirname "$helper")"
+  tmp="$helper.tmp.$$"
+  umask 077
+  cat > "$tmp" <<'HELPER'
+#!/usr/bin/env bash
+set -u
+
+service="${KIMIFLOW_OBSIDIAN_KEYCHAIN_SERVICE:-kimiflow.obsidian.api-key}"
+token="${OBSIDIAN_API_KEY:-${KIMIFLOW_OBSIDIAN_API_KEY:-}}"
+
+if [ -z "$token" ] && command -v security >/dev/null 2>&1; then
+  token="$(security find-generic-password -a "${USER:-${LOGNAME:-unknown}}" -s "$service" -w 2>/dev/null || true)"
+fi
+
+case "$token" in
+  *[[:cntrl:]]*)
+    printf 'obsidian-mcp-headers: refusing token with control characters\n' >&2
+    exit 2
+    ;;
+esac
+
+[ -n "$token" ] || {
+  printf 'obsidian-mcp-headers: missing OBSIDIAN_API_KEY or Keychain item kimiflow.obsidian.api-key\n' >&2
+  exit 1
+}
+
+if command -v jq >/dev/null 2>&1; then
+  jq -n --arg token "$token" '{"Authorization": ("Bearer " + $token)}'
+else
+  escaped="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  printf '{"Authorization":"Bearer %s"}\n' "$escaped"
+fi
+HELPER
+  mv "$tmp" "$helper" || die "cannot write helper: $helper"
+  chmod 700 "$helper" || die "cannot chmod helper: $helper"
+}
+
+read_token() {
+  local token=""
+  token="${OBSIDIAN_API_KEY:-${KIMIFLOW_OBSIDIAN_API_KEY:-}}"
+  if [ -z "$token" ] && command -v security >/dev/null 2>&1; then
+    token="$(security find-generic-password -a "${USER:-${LOGNAME:-unknown}}" -s "$service" -w 2>/dev/null || true)"
+  fi
+  case "$token" in
+    *[[:cntrl:]]*) return 2 ;;
+  esac
+  [ -n "$token" ] || return 1
+  printf '%s' "$token"
+}
+
+store_keychain_token() {
+  local service="$1" token
+  command -v security >/dev/null 2>&1 || die "macOS security command is required for --store-keychain" 2
+  [ -t 0 ] || die "--store-keychain must be run in your terminal, not through chat/agent automation" 2
+  printf 'Paste Obsidian Local REST API key (input hidden, not echoed): ' > /dev/tty
+  IFS= read -r -s token < /dev/tty
+  printf '\n' > /dev/tty
+  [ -n "$token" ] || die "empty API key refused" 2
+  case "$token" in
+    *[[:cntrl:]]*) die "API key contains control characters" 2 ;;
+  esac
+  security add-generic-password -U -a "${USER:-${LOGNAME:-unknown}}" -s "$service" -w "$token" >/dev/null
+  token=""
+  printf 'Stored API key in macOS Keychain service: %s\n' "$service"
+}
+
+codex_config_path() {
+  if [ -n "${CODEX_HOME:-}" ]; then
+    printf '%s/config.toml\n' "${CODEX_HOME%/}"
+  else
+    [ -n "${HOME:-}" ] || die "HOME is required when CODEX_HOME is not set" 2
+    printf '%s/.codex/config.toml\n' "$HOME"
+  fi
+}
+
+write_codex_config() {
+  local mcp_url="$1" config dir tmp had_content=0
+  config="$(codex_config_path)"
+  dir="$(dirname "$config")"
+  mkdir -p "$dir" || die "cannot create Codex config directory: $dir"
+  [ -f "$config" ] && had_content=1
+  tmp="$config.tmp.$$"
+  if [ -f "$config" ]; then
+    awk '
+      /^\[\[?mcp_servers\.obsidian(\]|\.)/ { skip = 1; next }
+      /^\[\[?[^]]+\]\]?[[:space:]]*$/ { skip = 0 }
+      !skip { print }
+    ' "$config" > "$tmp" || die "cannot rewrite Codex config: $config"
+  else
+    : > "$tmp" || die "cannot create Codex config: $config"
+  fi
+  if [ "$had_content" -eq 1 ] && [ -s "$tmp" ]; then
+    printf '\n' >> "$tmp"
+  fi
+  {
+    printf '[mcp_servers.obsidian]\n'
+    printf 'url = "%s"\n' "$mcp_url"
+    printf 'bearer_token_env_var = "OBSIDIAN_API_KEY"\n'
+    printf 'default_tools_approval_mode = "prompt"\n'
+  } >> "$tmp"
+  mv "$tmp" "$config" || die "cannot update Codex config: $config"
+  printf 'Updated Codex config: %s\n' "$config"
+}
+
+set_launch_env() {
+  local token
+  command -v launchctl >/dev/null 2>&1 || die "launchctl is required for --set-launch-env" 2
+  token="$(read_token)" || die "missing valid token for --set-launch-env; run --store-keychain first or set OBSIDIAN_API_KEY" 2
+  launchctl setenv OBSIDIAN_API_KEY "$token" >/dev/null || die "launchctl setenv failed" 1
+  token=""
+  printf 'Set OBSIDIAN_API_KEY for newly launched macOS GUI apps in this login session.\n'
+}
+
+verify_local_rest_api() {
+  local token code escaped_token
+  command -v curl >/dev/null 2>&1 || die "curl is required for --verify" 2
+  token="$(read_token)" || die "missing valid token for --verify; run --store-keychain first or set OBSIDIAN_API_KEY" 2
+  escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+  token=""
+  code="$(printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" \
+    | curl -k -sS -o /dev/null -w '%{http_code}' --connect-timeout 2 -m 5 --config - "$url/vault/" 2>/dev/null || printf '000')"
+  escaped_token=""
+  case "$code" in
+    2*) printf 'Verified Obsidian Local REST API auth: HTTP %s\n' "$code" ;;
+    401|403) die "Obsidian Local REST API rejected the API key: HTTP $code" 1 ;;
+    *) die "Obsidian Local REST API verification failed: HTTP $code" 1 ;;
+  esac
+}
+
+print_codex() {
+  local mcp_url="$1"
+  cat <<EOF
+Codex setup (user-level ~/.codex/config.toml):
+
+[mcp_servers.obsidian]
+url = "$mcp_url"
+bearer_token_env_var = "OBSIDIAN_API_KEY"
+default_tools_approval_mode = "prompt"
+
+Set OBSIDIAN_API_KEY outside the repo before starting Codex. Do not paste the key into chat or commit it.
+EOF
+}
+
+print_claude() {
+  local mcp_url="$1" helper="$2" mcp_url_json helper_json
+  mcp_url_json="$(json_string "$mcp_url")"
+  helper_json="$(json_string "$helper")"
+  cat <<EOF
+Claude Code setup (user scope recommended):
+
+1. Create/update the dynamic header helper:
+   hooks/vault-mcp-setup.sh --host claude --write-helper
+
+2. Add this MCP server JSON through Claude Code:
+
+{
+  "mcpServers": {
+    "obsidian": {
+      "type": "http",
+      "url": $mcp_url_json,
+      "headersHelper": $helper_json
+    }
+  }
+}
+
+The helper reads OBSIDIAN_API_KEY or macOS Keychain service kimiflow.obsidian.api-key at connection time.
+EOF
+}
+
+host="all"
+url="${KIMIFLOW_OBSIDIAN_URL:-https://127.0.0.1:27124}"
+if [ -n "${KIMIFLOW_DATA_DIR:-}" ]; then
+  data_dir="$KIMIFLOW_DATA_DIR"
+elif [ -n "${HOME:-}" ]; then
+  data_dir="$HOME/.kimiflow"
+else
+  data_dir=""
+fi
+write_helper=0
+write_config=0
+store_keychain=0
+set_launch_env=0
+verify=0
+interactive=0
+service="${KIMIFLOW_OBSIDIAN_KEYCHAIN_SERVICE:-kimiflow.obsidian.api-key}"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --host) shift; host="${1:-all}" ;;
+    --url) shift; url="${1:-}" ;;
+    --data-dir) shift; data_dir="${1:-}" ;;
+    --write-helper) write_helper=1 ;;
+    --write-config) write_config=1 ;;
+    --store-keychain) store_keychain=1 ;;
+    --set-launch-env) set_launch_env=1 ;;
+    --verify) verify=1 ;;
+    --interactive)
+      interactive=1
+      write_helper=1
+      write_config=1
+      store_keychain=1
+      set_launch_env=1
+      verify=1
+      ;;
+    --service) shift; service="${1:-}" ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "unknown argument: $1" 2 ;;
+  esac
+  shift
+done
+
+case "$host" in
+  codex|claude|all) ;;
+  *) die "--host must be codex, claude, or all" 2 ;;
+esac
+
+[ -n "$url" ] || die "--url cannot be empty" 2
+raw_url="$url"
+url="$(normalize_loopback_origin "$raw_url")" || die "refusing non-loopback or non-origin Obsidian URL: $raw_url" 2
+
+[ -n "$data_dir" ] || die "--data-dir cannot be empty" 2
+case "$data_dir" in
+  *[[:cntrl:]]*) die "--data-dir contains control characters" 2 ;;
+esac
+helper="$data_dir/obsidian-mcp-headers.sh"
+mcp_url="$url/mcp/"
+
+if [ "$interactive" -eq 1 ]; then
+  cat <<EOF
+Kimiflow Obsidian Vault MCP setup
+
+This terminal wizard can store the Obsidian API key in macOS Keychain, write host config, and verify local auth.
+The key is read in this terminal only. It is not printed, committed, or written to .kimiflow/.
+
+EOF
+fi
+
+if [ "$store_keychain" -eq 1 ]; then
+  store_keychain_token "$service"
+fi
+
+if [ "$write_helper" -eq 1 ] && host_includes claude; then
+  write_headers_helper "$helper"
+  printf 'Wrote Claude headers helper: %s\n\n' "$helper"
+fi
+
+if [ "$write_config" -eq 1 ] && host_includes codex; then
+  write_codex_config "$mcp_url"
+  printf '\n'
+fi
+
+if [ "$set_launch_env" -eq 1 ] && host_includes codex; then
+  set_launch_env
+  printf '\n'
+fi
+
+if [ "$verify" -eq 1 ]; then
+  verify_local_rest_api
+  printf '\n'
+fi
+
+printf 'Obsidian MCP endpoint: %s\n\n' "$mcp_url"
+case "$host" in
+  codex)
+    print_codex "$mcp_url"
+    ;;
+  claude)
+    print_claude "$mcp_url" "$helper"
+    ;;
+  all)
+    print_codex "$mcp_url"
+    printf '\n'
+    print_claude "$mcp_url" "$helper"
+    ;;
+esac
+
+if [ "$interactive" -eq 1 ]; then
+  cat <<'EOF'
+
+Next step: restart/reload Codex or Claude Code so the MCP client opens a fresh connection.
+After restart, run Kimiflow's provider health check again.
+EOF
+fi

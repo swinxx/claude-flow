@@ -21,7 +21,7 @@ Claude Code and Codex both cover a lot with native planning, subagents and hooks
 
 **Prerequisite:** [`jq`](https://jqlang.github.io/jq/) on your `PATH` — the hooks need it. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (recommended):** an Obsidian (or compatible notes) MCP for the **vault memory layer** — kimiflow searches the vault before researching and writes a reviewable sync handoff for reusable findings, auto-discovering your vault's own structure. No vault MCP → kimiflow skips it and uses the repo-local `.kimiflow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
+**Optional (recommended):** Obsidian for the **vault memory layer** — kimiflow auto-detects a running Obsidian Local REST API on the common local ports and can connect it with a local provider manifest, then writes a reviewable sync handoff for reusable findings. An authenticated Vault MCP is needed for direct Vault reads/writes; an API key can validate the local REST API but is never stored and does not by itself add direct tools. No vault provider → kimiflow skips it and uses the repo-local `.kimiflow/` memory. → full setup + why it's worth it under **[Vault memory layer](#vault-memory-layer-optional-but-recommended)** below.
 
 ### Claude Code — plugin (skill **+** hooks)
 
@@ -192,16 +192,21 @@ you explicitly ask for a sanitized public note.
 
 Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
-`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-SYNC.md`,
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
 `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`, and review-only `SKILL-DRAFTS/`; each completed run also gets a
 run-local `LEARNING-REVIEW.md`.
 `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time.
 
-This layer is local-first and optional-provider-aware. It works without a Vault MCP; if a Vault is connected,
-kimiflow can promote curated long-term learnings there while keeping private/security details local or
-sanitized. Run-close learnings are quality-gated and source-freshness checked, so vague notes and stale
+This layer is local-first and optional-provider-aware. It works without a Vault MCP; `provider status`
+auto-detects a running Obsidian Local REST API on `https://127.0.0.1:27124` / `http://127.0.0.1:27123`, and
+`provider connect` writes only `.kimiflow/project/VAULT-PROVIDER.json`. It never stores an Obsidian API key.
+`provider health` distinguishes `detected_unconfigured`, `connected_local_only`, `authenticated`, and
+`auth_failed`, so the launcher can explain exactly whether Obsidian is merely detected, locally connected,
+locally API-validated, or backed by direct MCP search/write tools. If direct Vault MCP access is available,
+kimiflow can promote curated long-term learnings there while keeping private/security details local or sanitized. Run-close learnings are
+quality-gated and source-freshness checked, so vague notes and stale
 evidence do not become active project memory. Evidence references are stored repo-relative; outside-repo paths
 are collapsed to `OUTSIDE_REPO`. When evidence changes, refreshed rows supersede older rows and recall returns
 only current learnings. Recall can also search bounded old run artifacts and records use-count/last-used metrics
@@ -214,7 +219,7 @@ bounded `VAULT-SYNC.md` handoff with only current, non-private, non-security lea
 repo-relative evidence; it exports at most 20 candidates by default, records only exported IDs locally, and never
 writes external Vault notes blindly.
 Approve/apply revalidates evidence first, so stale proposals stay local until refreshed.
-The launcher surfaces memory budget, learning counts, run-history/usage/provider status, pending provider sync
+The launcher surfaces memory budget, learning counts, run-history/usage/provider health, pending provider sync
 handoffs, pending proposal notifications, Vault availability, and curation reasons.
 
 ## Example
@@ -264,9 +269,9 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 
 ## Vault memory layer (optional, but recommended)
 
-kimiflow can use an **Obsidian vault as a cross-project knowledge base**. In Phase 2 it **searches your vault before researching** (so it never re-researches what you already learned) and writes a reviewable sync handoff for reusable findings — auto-discovering your vault's own folder/index structure. Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
+kimiflow can use an **Obsidian vault as a cross-project knowledge base**. It can auto-detect Obsidian's Local REST API when the app is open, connect it locally, and write reviewable prefetch/sync handoffs for reusable findings. With authenticated MCP tool access, Phase 2 can also **search your vault before researching** (so it never re-researches what you already learned). Across many projects this compounds into a personal, searchable memory that makes every run faster and better-grounded. **It's genuinely worth setting up.**
 
-**Without a vault MCP — nothing breaks.** kimiflow detects there's no notes MCP, **notes it in `STATE.md`, skips the vault search + save, and continues.** Research falls back to the codebase + web, and the **repo-local `.kimiflow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the cross-project shortcut.
+**Without a vault MCP — nothing breaks.** kimiflow can still detect a running Obsidian app and create local `VAULT-PROVIDER.json` / `VAULT-SYNC.md` handoffs, but skips direct vault search + save and continues. Research falls back to the codebase + web, and the **repo-local `.kimiflow/` memory** (`STANDARDS.md` / `DECISIONS.md`) still persists project-level learning. No errors, no blocked phases — identical gates, hooks and outcome; you only lose the direct cross-project shortcut until an authenticated MCP is configured.
 
 The newer local memory router (`.kimiflow/project/MEMORY.md`, `LEARNINGS.jsonl`, `MEMORY-INDEX.json`) still
 works without a vault and is the default project-level learning layer.
@@ -276,15 +281,21 @@ works without a vault and is the default project-level learning layer.
 ### Setup — so the vault layer actually works
 
 1. **Install Obsidian:** <https://obsidian.md> — open or create a vault.
-2. **Enable the *Local REST API* plugin** ([coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)): Obsidian → Settings → Community plugins → install & enable → copy the **API key** from the plugin settings.
-3. **Add the Obsidian MCP server to Claude Code** ([MarkusPfundstein/mcp-obsidian](https://github.com/MarkusPfundstein/mcp-obsidian); needs [`uv`](https://docs.astral.sh/uv/)):
+2. **Enable the *Local REST API* plugin** ([coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)): Obsidian → Settings → Community plugins → install & enable. Keep Obsidian running; kimiflow auto-detects the default HTTPS endpoint at `https://127.0.0.1:27124` and offers to connect it.
+3. **Optional, for direct Vault reads/writes:** use the built-in MCP endpoint from Local REST API. The easiest path opens a Terminal wizard so the API key stays out of chat:
    ```bash
-   claude mcp add obsidian -e OBSIDIAN_API_KEY=<your-api-key> -- uvx mcp-obsidian
+   hooks/vault-mcp-open-terminal.sh --host codex
    ```
-   Defaults to `127.0.0.1:27124`; override with `-e OBSIDIAN_HOST=… -e OBSIDIAN_PORT=…` if you changed the plugin's port.
-4. **Restart Claude Code** and keep **Obsidian running** during a kimiflow run (the MCP talks to the app's local API). Verify the `obsidian_*` tools are listed.
+   On macOS, the wizard writes the user-level Codex MCP config, stores the key in Keychain, sets the launch environment for newly opened Codex, and verifies the loopback Local REST API. For Claude Code use `--host claude`; for both hosts use `--host all`.
+4. **Manual/CLI fallback:** run `hooks/vault-mcp-setup.sh --host all --interactive` in your own terminal, or `hooks/vault-mcp-setup.sh --host all` to print Codex and Claude Code snippets for `https://127.0.0.1:27124/mcp/`. It never prints, commits, or stores the API key in `.kimiflow/`.
+5. **Restart/reload your MCP client** and keep **Obsidian running** during a kimiflow run.
 
-kimiflow uses `obsidian_simple_search`, `obsidian_get_file_contents` and `obsidian_append_content` — any MCP exposing those `obsidian_*` tools works.
+The frictionless path is: detect Obsidian → `provider connect` → `provider health` → Terminal setup wizard → local
+`VAULT-PREFETCH.md` / `VAULT-SYNC.md` handoffs. Direct note search/write uses authenticated
+Vault MCP tools (for example Local REST API's built-in `search_simple`, `vault_read`, `vault_append`/`vault_write`,
+or compatible legacy `obsidian_*` tools) only once the host exposes them.
+An `OBSIDIAN_API_KEY` environment variable can validate the local REST API for health checks, but direct
+search/write stays disabled until a tool provider is actually present.
 
 ---
 
@@ -302,7 +313,7 @@ Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel
 
 **Voraussetzung:** [`jq`](https://jqlang.github.io/jq/) im `PATH` — die Hooks brauchen es. `brew install jq` (macOS) · `sudo apt-get install jq` (Debian/Ubuntu).
 
-**Optional (empfohlen):** ein Obsidian- (oder kompatibler Notes-) MCP für die **Vault-Memory-Schicht** — kimiflow durchsucht den Vault vor dem Recherchieren und schreibt ein reviewbares Sync-Handoff für wiederverwendbare Erkenntnisse, wobei es die Struktur deines Vaults selbst erkennt. Kein Vault-MCP → kimiflow überspringt ihn und nutzt die repo-lokale `.kimiflow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
+**Optional (empfohlen):** Obsidian für die **Vault-Memory-Schicht** — kimiflow erkennt eine laufende Obsidian Local REST API automatisch auf den üblichen lokalen Ports, kann sie lokal verbinden und schreibt dann ein reviewbares Sync-Handoff für wiederverwendbare Erkenntnisse. Ein authentifizierter Vault-MCP ist für direkte Vault-Reads/Writes nötig; ein API-Key kann die lokale REST-API validieren, wird nie gespeichert und liefert allein noch keine Direct-Tools. Kein Vault-Provider → kimiflow nutzt die repo-lokale `.kimiflow/`-Memory. → vollständiges Setup + warum es sich lohnt unter **Vault-Memory-Schicht** unten.
 
 ### Claude Code — Plugin (Skill **+** Hooks)
 
@@ -473,16 +484,21 @@ außer du verlangst explizit eine sanitisierte öffentliche Notiz.
 
 Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
-`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-SYNC.md`,
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
 `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl` und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich eine run-lokale
 `LEARNING-REVIEW.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
 Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu klassifizieren, die
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
 oder den ganzen Vault zu lesen.
 
-Diese Schicht ist local-first und funktioniert ohne Vault-MCP. Wenn ein Vault verbunden ist, kann kimiflow
-kuratierte Langzeit-Learnings dorthin schreiben; private oder sicherheitsrelevante Details bleiben lokal
-oder werden sanitisiert. Run-Abschluss-Learnings sind qualitätsgeprüft und source-freshness-geprüft, damit
+Diese Schicht ist local-first und funktioniert ohne Vault-MCP. `provider status` erkennt eine laufende
+Obsidian Local REST API auf `https://127.0.0.1:27124` / `http://127.0.0.1:27123`, und `provider connect`
+schreibt nur `.kimiflow/project/VAULT-PROVIDER.json`. Ein Obsidian API-Key wird nie dort gespeichert.
+`provider health` unterscheidet `detected_unconfigured`, `connected_local_only`, `authenticated` und
+`auth_failed`, damit der Launcher genau erklären kann, ob Obsidian nur erkannt, lokal verbunden,
+lokal API-validiert oder durch direkte MCP-Such-/Write-Tools nutzbar ist. Wenn direkter Vault-MCP-Zugriff
+verfügbar ist, kann kimiflow kuratierte Langzeit-Learnings dorthin schreiben; private oder sicherheitsrelevante Details bleiben lokal oder
+werden sanitisiert. Run-Abschluss-Learnings sind qualitätsgeprüft und source-freshness-geprüft, damit
 vage Notizen und stale Evidence nicht als aktives Projektwissen landen. Evidence-Referenzen werden repo-relativ
 gespeichert; Pfade außerhalb des Repos werden zu `OUTSIDE_REPO` zusammengefasst. Wenn sich Evidence ändert,
 superseded der Refresh ältere Zeilen und Recall liefert nur aktuelle Learnings. Recall kann zusätzlich bounded
@@ -495,7 +511,7 @@ reviewbare Draft-Notizen statt automatische Skill-Patches. Provider-Sync schreib
 mit nur aktuellen, nicht-privaten, nicht-security Learnings mit frisch verifizierter repo-relativer Evidence,
 exportiert standardmäßig maximal 20 Kandidaten, merkt sich nur exportierte IDs lokal und schreibt niemals blind externe Vault-Notizen. Approve/apply prüft Evidence
 vorher erneut, stale Vorschläge bleiben lokal bis zum Refresh. Der Launcher zeigt Memory-Budget,
-Learning-Zählungen, Run-History-/Usage-/Provider-Status, pending Provider-Sync-Handoffs, pending Proposal
+Learning-Zählungen, Run-History-/Usage-/Provider-Health, pending Provider-Sync-Handoffs, pending Proposal
 Notifications, Vault-Verfügbarkeit und Kuratierungsgründe.
 
 ## Beispiel
@@ -545,21 +561,28 @@ kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos ak
 
 ## Vault-Memory-Schicht (optional, aber empfohlen)
 
-kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. In Phase 2 **durchsucht es deinen Vault vor dem Recherchieren** (damit es nie neu recherchiert, was du schon gelernt hast) und schreibt ein reviewbares Sync-Handoff für wiederverwendbare Erkenntnisse — wobei es die Ordner-/Index-Struktur deines Vaults selbst erkennt. Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
+kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nutzen. Es erkennt Obsidian automatisch, wenn die Local REST API läuft, verbindet sie lokal und schreibt reviewbare Prefetch-/Sync-Handoffs für wiederverwendbare Erkenntnisse. Mit authentifiziertem MCP-Tool-Zugriff kann Phase 2 zusätzlich **deinen Vault vor dem Recherchieren durchsuchen** (damit es nie neu recherchiert, was du schon gelernt hast). Über viele Projekte hinweg wächst das zu einem persönlichen, durchsuchbaren Gedächtnis, das jeden Lauf schneller und fundierter macht. **Das Einrichten lohnt sich wirklich.**
 
-**Ohne Vault-MCP — nichts bricht.** kimiflow erkennt, dass kein Notes-MCP da ist, **vermerkt es in `STATE.md`, überspringt Vault-Suche + -Save und läuft weiter.** Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.kimiflow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die projektübergreifende Abkürzung fehlt.
+**Ohne Vault-MCP — nichts bricht.** kimiflow kann eine laufende Obsidian-App trotzdem erkennen und lokale `VAULT-PROVIDER.json` / `VAULT-SYNC.md`-Handoffs erstellen, überspringt aber direkte Vault-Suche + -Save und läuft weiter. Recherche fällt auf Codebase + Web zurück, und die **repo-lokale `.kimiflow/`-Memory** (`STANDARDS.md` / `DECISIONS.md`) persistiert weiterhin projektbezogenes Lernen. Keine Fehler, keine blockierten Phasen — identische Gates, Hooks und Ergebnisqualität; nur die direkte projektübergreifende Abkürzung fehlt bis ein authentifizierter MCP konfiguriert ist.
 
 **Zweite optionale Quelle — claude-mem.** Ist das **claude-mem**-Plugin (cross-session Memory) installiert, durchsucht kimiflow es in Phase 2 **zusätzlich** beim Recall ("hatten wir das schon mal?") — **nur lesend**; gespeichert wird weiterhin in den Vault / die repo-lokale `.kimiflow/`-Memory. Nicht installiert → übersprungen, exakt wie der Vault. **Erkennung pro Run**, ein späteres Nachrüsten wird also beim nächsten Lauf erkannt (nach `/reload-plugins` oder Neustart). Beide sind unabhängig — eines, beides oder keines.
 
 ### Setup — damit die Vault-Schicht wirklich funktioniert
 
 1. **Obsidian installieren:** <https://obsidian.md> — Vault öffnen oder anlegen.
-2. **Das *Local REST API*-Plugin aktivieren** ([coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)): Obsidian → Einstellungen → Community-Plugins → installieren & aktivieren → **API-Key** aus den Plugin-Einstellungen kopieren.
-3. **Den Obsidian-MCP-Server zu Claude Code hinzufügen** ([MarkusPfundstein/mcp-obsidian](https://github.com/MarkusPfundstein/mcp-obsidian); braucht [`uv`](https://docs.astral.sh/uv/)):
+2. **Das *Local REST API*-Plugin aktivieren** ([coddingtonbear/obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)): Obsidian → Einstellungen → Community-Plugins → installieren & aktivieren. Obsidian laufen lassen; kimiflow erkennt den Standard-HTTPS-Endpunkt `https://127.0.0.1:27124` automatisch und bietet die Verbindung an.
+3. **Optional, für direkte Vault-Reads/Writes:** den eingebauten MCP-Endpunkt der Local REST API verwenden. Der einfachste Weg öffnet einen Terminal-Wizard, damit der API-Key nicht im Chat landet:
    ```bash
-   claude mcp add obsidian -e OBSIDIAN_API_KEY=<dein-api-key> -- uvx mcp-obsidian
+   hooks/vault-mcp-open-terminal.sh --host codex
    ```
-   Standard ist `127.0.0.1:27124`; mit `-e OBSIDIAN_HOST=… -e OBSIDIAN_PORT=…` überschreiben, falls du den Port geändert hast.
-4. **Claude Code neu starten** und **Obsidian während eines kimiflow-Laufs laufen lassen** (der MCP spricht mit der lokalen API der App). Prüfen, dass die `obsidian_*`-Tools gelistet sind.
+   Auf macOS schreibt der Wizard die user-level Codex-MCP-Konfig, speichert den Key im Keychain, setzt die Launch-Umgebung für neu geöffnete Codex-Fenster und prüft die lokale REST API. Für Claude Code nutze `--host claude`; für beide Hosts `--host all`.
+4. **Manueller/CLI-Fallback:** `hooks/vault-mcp-setup.sh --host all --interactive` im eigenen Terminal starten, oder `hooks/vault-mcp-setup.sh --host all` nutzen, um Codex- und Claude-Code-Snippets für `https://127.0.0.1:27124/mcp/` zu drucken. Er druckt, committet und speichert den API-Key nie in `.kimiflow/`.
+5. **MCP-Client neu starten/neu laden** und **Obsidian während eines kimiflow-Laufs laufen lassen**.
 
-kimiflow nutzt `obsidian_simple_search`, `obsidian_get_file_contents` und `obsidian_append_content` — jeder MCP, der diese `obsidian_*`-Tools bereitstellt, funktioniert.
+Der frictionless Pfad ist: Obsidian erkennen → `provider connect` → `provider health` → Terminal-Setup-Wizard → lokale
+`VAULT-PREFETCH.md` / `VAULT-SYNC.md`-Handoffs schreiben. Direkte Notizsuche/-writes nutzen
+authentifizierte Vault-MCP-Tools, zum Beispiel die eingebauten Local-REST-API-Tools `search_simple`,
+`vault_read`, `vault_append`/`vault_write` oder kompatible Legacy-`obsidian_*`-Tools, erst sobald der Host sie
+bereitstellt. Eine `OBSIDIAN_API_KEY`-Umgebungsvariable kann die lokale
+REST-API für Health-Checks validieren, direkte Search/Writes bleiben aber deaktiviert, bis wirklich ein
+Tool-Provider vorhanden ist.

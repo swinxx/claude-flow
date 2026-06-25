@@ -6,6 +6,27 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.36
+
+Ship **frictionless Obsidian Vault MCP setup** for Codex and Claude Code.
+
+### Added
+- Memory Router provider status now auto-detects a running Obsidian Local REST API on the common local ports
+  and reports `provider_detected_unconfigured` until the user connects it.
+- Added `provider detect` / `provider connect` for a frictionless local Obsidian setup that writes only
+  `.kimiflow/project/VAULT-PROVIDER.json` and never stores an Obsidian API key.
+- Added `provider health` with `detected_unconfigured`, `connected_local_only`, `authenticated`, and `auth_failed`
+  states, plus auth-ready capabilities without storing API keys in `.kimiflow/`.
+- Added `provider setup` and `hooks/vault-mcp-setup.sh` for safe Obsidian Local REST API MCP setup:
+  Codex uses `bearer_token_env_var = "OBSIDIAN_API_KEY"`, Claude Code uses `headersHelper`, and non-loopback
+  URLs are refused before any token-bearing setup is printed.
+- Added `hooks/vault-mcp-open-terminal.sh`, an interactive macOS Terminal wizard that writes host config, stores the
+  API key in Keychain, verifies local auth, and keeps the key out of chat and `.kimiflow/`.
+- Provider prefetch/sync handoffs now include health/auth readiness, so direct Vault search/write is used only
+  when authenticated and otherwise stays as reviewable local `VAULT-PREFETCH.md` / `VAULT-SYNC.md`.
+- Launcher/README/skill docs now describe the V2 flow: detect Obsidian, connect locally, check health/auth, print
+  host-owned MCP setup, then use direct Vault search/write only when authenticated.
+
 ## 0.1.35
 
 Ship **bounded Vault sync handoffs** for the Memory Provider lifecycle.

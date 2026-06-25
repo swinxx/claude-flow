@@ -13,7 +13,7 @@
 #   memory-router.sh index [--root <path>] [--write] [--pretty]
 #   memory-router.sh consolidate [--root <path>] [--write] [--pretty]
 #   memory-router.sh propose [--root <path>] [--write] [--approve <id>] [--reject <id>] [--reason <text>] [--apply] [--pretty]
-#   memory-router.sh provider <status|configure|prefetch|sync> [--root <path>] [--type <obsidian|none>] [--available <true|false>] [--path <path>] [--pretty]
+#   memory-router.sh provider <status|health|setup|detect|connect|configure|prefetch|sync> [--root <path>] [--type <obsidian|none>] [--available <true|false>] [--path <path>] [--host <codex|claude|all>] [--pretty]
 #
 # Output: JSON except record/verify-run, which emit stable tab-separated lines.
 set -u
@@ -278,20 +278,536 @@ provider_manifest_json() {
   fi
 }
 
+provider_detection_json() {
+  local urls='[]' raw_urls url normalized body timeout
+  timeout="${KIMIFLOW_OBSIDIAN_DETECT_TIMEOUT:-0.35}"
+  [ -n "$timeout" ] || timeout="0.35"
+
+  if [ -n "${KIMIFLOW_OBSIDIAN_URL:-}" ]; then
+    raw_urls="$KIMIFLOW_OBSIDIAN_URL"
+  else
+    raw_urls="https://127.0.0.1:27124 http://127.0.0.1:27123"
+  fi
+
+  for url in $raw_urls; do
+    normalized="${url%/}"
+    urls="$(printf '%s\n' "$urls" | jq --arg url "$normalized" '. + [$url]')"
+  done
+
+  if ! command -v curl >/dev/null 2>&1; then
+    jq -n --argjson urls "$urls" '{
+      status: "unavailable",
+      available: false,
+      type: "obsidian",
+      url: "",
+      checked_urls: $urls,
+      reason: "curl_unavailable",
+      direct_write_requires_token: true,
+      manifest: null
+    }'
+    return 0
+  fi
+
+  for url in $raw_urls; do
+    normalized="${url%/}"
+    body="$(curl -k -sS --connect-timeout "$timeout" -m "$timeout" "$normalized/" 2>/dev/null || true)"
+    if printf '%s\n' "$body" | jq -e '
+      (.status // "") == "OK"
+      and (((.manifest.id // "") | test("obsidian-local-rest-api"))
+        or ((.manifest.name // "") | test("Local REST API"; "i")))
+    ' >/dev/null 2>&1; then
+      printf '%s\n' "$body" | jq \
+        --arg url "$normalized" \
+        --argjson urls "$urls" \
+        '{
+          status: "detected",
+          available: true,
+          type: "obsidian",
+          url: $url,
+          checked_urls: $urls,
+          reason: null,
+          direct_write_requires_token: true,
+          manifest: {
+            id: (.manifest.id // ""),
+            name: (.manifest.name // ""),
+            version: (.manifest.version // "")
+          }
+        }'
+      return 0
+    fi
+  done
+
+  jq -n --argjson urls "$urls" '{
+    status: "missing",
+    available: false,
+    type: "obsidian",
+    url: "",
+    checked_urls: $urls,
+    reason: "not_detected",
+    direct_write_requires_token: true,
+    manifest: null
+  }'
+}
+
+provider_url_is_loopback() {
+  provider_normalize_loopback_origin "$1" >/dev/null 2>&1
+}
+
+provider_normalize_loopback_origin() {
+  local url="$1" scheme rest host_port path host port suffix host_lc
+  url="${url%/}"
+  case "$url" in
+    *[[:space:]]*|*\"*|*\'*|*\\*|*\`*) return 1 ;;
+  esac
+  case "$url" in
+    http://*) scheme="http"; rest="${url#http://}" ;;
+    https://*) scheme="https"; rest="${url#https://}" ;;
+    *) return 1 ;;
+  esac
+
+  host_port="${rest%%/*}"
+  path=""
+  if [ "$rest" != "$host_port" ]; then
+    path="/${rest#*/}"
+  fi
+  case "$path" in
+    ""|"/"|"/mcp"|"/mcp/") ;;
+    *) return 1 ;;
+  esac
+
+  [ -n "$host_port" ] || return 1
+  case "$host_port" in
+    *@*) return 1 ;;
+  esac
+  case "$host_port" in
+    \[*\]*)
+      host="${host_port#\[}"
+      host="${host%%\]*}"
+      suffix="${host_port#*\]}"
+      case "$suffix" in
+        "") port="" ;;
+        :*) port="${suffix#:}" ;;
+        *) return 1 ;;
+      esac
+      ;;
+    *)
+      host="${host_port%%:*}"
+      port=""
+      if [ "$host_port" != "$host" ]; then
+        port="${host_port#*:}"
+        case "$port" in
+          *:*) return 1 ;;
+        esac
+      fi
+      ;;
+  esac
+  host_lc="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+  case "$port" in
+    ""|*[!0-9]*) [ -z "$port" ] || return 1 ;;
+  esac
+  case "$host_lc" in
+    localhost|127.0.0.1)
+      if [ -n "$port" ]; then printf '%s://%s:%s\n' "$scheme" "$host_lc" "$port"; else printf '%s://%s\n' "$scheme" "$host_lc"; fi
+      ;;
+    ::1)
+      if [ -n "$port" ]; then printf '%s://[::1]:%s\n' "$scheme" "$port"; else printf '%s://[::1]\n' "$scheme"; fi
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+provider_base_url_from_provider_json() {
+  local provider="$1" url
+  url="$(printf '%s\n' "$provider" | jq -r '(.vault_path // "") as $path | if $path != "" then $path else (.detection.url // "") end')"
+  [ -n "$url" ] || url="https://127.0.0.1:27124"
+  printf '%s\n' "$url"
+}
+
+provider_mcp_url_from_provider_json() {
+  local provider="$1" url origin
+  url="$(provider_base_url_from_provider_json "$provider")"
+  origin="$(provider_normalize_loopback_origin "$url")" || return 1
+  printf '%s/mcp/' "$origin"
+}
+
+provider_direct_search_ready_json() {
+  local auth="$1"
+  printf '%s\n' "$auth" | jq -r '.source == "mcp"'
+}
+
+provider_setup_plan_json() {
+  local provider="$1" setup_host="$2"
+  local raw_url mcp_url base_url status reason helper_path codex_snippet claude_snippet manual_steps
+  case "$setup_host" in
+    codex|claude|all) ;;
+    *) setup_host="all" ;;
+  esac
+
+  status="setup_plan"
+  reason=""
+  raw_url="$(provider_base_url_from_provider_json "$provider")"
+  if base_url="$(provider_normalize_loopback_origin "$raw_url")"; then
+    mcp_url="$base_url/mcp/"
+  else
+    base_url="$raw_url"
+    mcp_url=""
+    status="blocked_non_loopback"
+    reason="non_loopback_url"
+  fi
+
+  helper_path="~/.kimiflow/obsidian-mcp-headers.sh"
+  codex_snippet="$(printf '[mcp_servers.obsidian]\nurl = "%s"\nbearer_token_env_var = "OBSIDIAN_API_KEY"\ndefault_tools_approval_mode = "prompt"\n' "$mcp_url")"
+  claude_snippet="$(jq -n \
+    --arg url "$mcp_url" \
+    --arg helper "$helper_path" \
+    '{mcpServers: {obsidian: {type: "http", url: $url, headersHelper: $helper}}}')"
+  manual_steps="$(jq -n '[
+    "Install and enable Obsidian Local REST API, then keep Obsidian running.",
+    "Copy the API key only into your shell environment or macOS Keychain; do not paste it into chat or commit it.",
+    "Run hooks/vault-mcp-open-terminal.sh --host <codex|claude|all> to open the interactive terminal wizard.",
+    "Paste the API key only into that terminal prompt; do not paste it into chat or commit it.",
+    "Restart or reload the MCP client so the host, not Kimiflow, owns the bearer token."
+  ]')"
+
+  jq -n \
+    --arg status "$status" \
+    --arg reason "$reason" \
+    --arg host "$setup_host" \
+    --arg mcp_url "$mcp_url" \
+    --arg base_url "$base_url" \
+    --arg helper_path "$helper_path" \
+    --arg codex_snippet "$codex_snippet" \
+    --argjson claude_snippet "$claude_snippet" \
+    --argjson manual_steps "$manual_steps" \
+    --argjson provider "$provider" \
+    '{
+      schema_version: 1,
+      status: $status,
+      reason: (if $reason == "" then null else $reason end),
+      host: $host,
+      blocked: ($status == "blocked_non_loopback"),
+      provider_state: {
+        configured: ($provider.configured == true),
+        available: ($provider.available == true),
+        health: ($provider.health.status // "unknown"),
+        auth: ($provider.auth.status // "unknown"),
+        detected_url: ($provider.detection.url // ""),
+        manifest_url: ($provider.vault_path // "")
+      },
+      mcp: {
+        transport: "streamable_http",
+        url: (if $status == "blocked_non_loopback" then "" else $mcp_url end),
+        base_url: $base_url,
+        token_env_var: "OBSIDIAN_API_KEY",
+        auth_header: "Authorization: Bearer ${OBSIDIAN_API_KEY}"
+      },
+      secret_policy: {
+        stores_token: false,
+        writes_token_to_repo: false,
+        echoes_token: false,
+        token_owner: "host_mcp_client",
+        token_inputs: ["OBSIDIAN_API_KEY", "KIMIFLOW_OBSIDIAN_API_KEY", "macOS Keychain service kimiflow.obsidian.api-key"],
+        non_loopback_blocked: ($status == "blocked_non_loopback")
+      },
+      helpers: {
+        setup_script: "hooks/vault-mcp-setup.sh",
+        terminal_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-open-terminal.sh --host " + (if $host == "all" then "all" else $host end) end),
+        interactive_setup: (if $status == "blocked_non_loopback" then "" else "hooks/vault-mcp-setup.sh --host " + (if $host == "all" then "all" else $host end) + " --interactive" end),
+        claude_headers_helper: $helper_path,
+        write_codex_config: "hooks/vault-mcp-setup.sh --host codex --write-config",
+        write_claude_helper: "hooks/vault-mcp-setup.sh --host claude --write-helper"
+      },
+      hosts: {
+        codex: {
+          enabled: ($host == "all" or $host == "codex"),
+          config_owner: "user-level ~/.codex/config.toml",
+          snippet: (if $status == "blocked_non_loopback" then "" else $codex_snippet end),
+          secret_handling: "Codex reads the bearer token from OBSIDIAN_API_KEY via bearer_token_env_var."
+        },
+        claude: {
+          enabled: ($host == "all" or $host == "claude"),
+          config_owner: "user or local Claude Code MCP config",
+          snippet: (if $status == "blocked_non_loopback" then {} else $claude_snippet end),
+          secret_handling: "Claude Code runs headersHelper at connection time; the helper reads OBSIDIAN_API_KEY or macOS Keychain and prints only request headers to the MCP client."
+        }
+      },
+      manual_steps: $manual_steps,
+      next_command: (if $status == "blocked_non_loopback" then "provider configure --path <loopback Obsidian URL>" else "hooks/vault-mcp-open-terminal.sh --host " + (if $host == "all" then "all" else $host end) end)
+    }'
+}
+
+provider_direct_write_ready_json() {
+  local auth="$1"
+  printf '%s\n' "$auth" | jq -r '.source == "mcp"'
+}
+
+provider_auth_json() {
+  local manifest="$1" detection="$2" available="$3" configured="$4"
+  local override mcp token="" token_source="" escaped_token="" status source authenticated validated url timeout code probe_allowed probe_blocked_reason
+  status="not_configured"
+  source="none"
+  authenticated=false
+  validated=false
+  code=""
+  probe_allowed=false
+  probe_blocked_reason=""
+  timeout="${KIMIFLOW_OBSIDIAN_DETECT_TIMEOUT:-0.35}"
+  [ -n "$timeout" ] || timeout="0.35"
+
+  url="$(jq -rn \
+    --argjson manifest "$manifest" \
+    --argjson detection "$detection" \
+    '($manifest.vault_path // "") as $path | if $path != "" then $path else ($detection.url // "") end')"
+  url="${url%/}"
+
+  override="${KIMIFLOW_VAULT_AUTHENTICATED:-${KIMIFLOW_OBSIDIAN_AUTHENTICATED:-}}"
+  case "$override" in
+    1|true|TRUE|yes|YES)
+      jq -n --arg url "$url" '{
+        required: true,
+        status: "authenticated",
+        authenticated: true,
+        source: "override",
+        token_env_present: false,
+        token_source: null,
+        token_stored: false,
+        validated: false,
+        probe_http_status: null,
+        probe_allowed: false,
+        probe_blocked_reason: null,
+        url: $url,
+        setup_hint: "Vault auth was marked available by environment override."
+      }'
+      return 0
+      ;;
+    0|false|FALSE|no|NO)
+      jq -n --arg url "$url" '{
+        required: true,
+        status: "auth_failed",
+        authenticated: false,
+        source: "override",
+        token_env_present: false,
+        token_source: null,
+        token_stored: false,
+        validated: false,
+        probe_http_status: null,
+        probe_allowed: false,
+        probe_blocked_reason: null,
+        url: $url,
+        setup_hint: "Vault auth was marked failed by environment override."
+      }'
+      return 0
+      ;;
+  esac
+
+  mcp="${KIMIFLOW_VAULT_MCP_AVAILABLE:-${KIMIFLOW_OBSIDIAN_MCP_AVAILABLE:-}}"
+  case "$mcp" in
+    1|true|TRUE|yes|YES)
+      jq -n --arg url "$url" '{
+        required: true,
+        status: "authenticated",
+        authenticated: true,
+        source: "mcp",
+        token_env_present: false,
+        token_source: null,
+        token_stored: false,
+        validated: false,
+        probe_http_status: null,
+        probe_allowed: false,
+        probe_blocked_reason: null,
+        url: $url,
+        setup_hint: "Authenticated Obsidian/Vault MCP is available in this session."
+      }'
+      return 0
+      ;;
+  esac
+
+  if [ -n "${KIMIFLOW_OBSIDIAN_API_KEY:-}" ]; then
+    token="$KIMIFLOW_OBSIDIAN_API_KEY"
+    token_source="KIMIFLOW_OBSIDIAN_API_KEY"
+  elif [ -n "${OBSIDIAN_API_KEY:-}" ]; then
+    token="$OBSIDIAN_API_KEY"
+    token_source="OBSIDIAN_API_KEY"
+  fi
+
+  if [ -n "$token" ]; then
+    status="token_present"
+    source="env"
+    if [ -z "$url" ]; then
+      status="token_unverified"
+      probe_blocked_reason="missing_url"
+    elif ! url="$(provider_normalize_loopback_origin "$url")"; then
+      status="token_unverified"
+      probe_blocked_reason="non_loopback_url"
+    elif ! command -v curl >/dev/null 2>&1; then
+      status="token_unverified"
+      probe_blocked_reason="curl_unavailable"
+    else
+      case "$token" in
+        *$'\n'*|*$'\r'*)
+          status="token_unverified"
+          probe_blocked_reason="multiline_token"
+          ;;
+        *)
+          probe_allowed=true
+          escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+          code="$(printf 'header = "Authorization: Bearer %s"\n' "$escaped_token" \
+            | curl -k -sS -o /dev/null -w '%{http_code}' \
+                --connect-timeout "$timeout" -m "$timeout" --config - "$url/vault/" 2>/dev/null || printf '000')"
+          case "$code" in
+            2*)
+              status="authenticated"
+              authenticated=true
+              validated=true
+              ;;
+            401|403)
+              status="auth_failed"
+              validated=true
+              ;;
+            *)
+              status="token_unverified"
+              ;;
+          esac
+          ;;
+      esac
+    fi
+    jq -n \
+      --arg status "$status" \
+      --arg source "$source" \
+      --arg token_source "$token_source" \
+      --arg url "$url" \
+      --arg code "$code" \
+      --arg probe_blocked_reason "$probe_blocked_reason" \
+      --argjson authenticated "$authenticated" \
+      --argjson validated "$validated" \
+      --argjson probe_allowed "$probe_allowed" \
+      '{
+        required: true,
+        status: $status,
+        authenticated: $authenticated,
+        source: $source,
+        token_env_present: true,
+        token_source: $token_source,
+        token_stored: false,
+        validated: $validated,
+        probe_http_status: (if $code == "" then null else $code end),
+        probe_allowed: $probe_allowed,
+        probe_blocked_reason: (if $probe_blocked_reason == "" then null else $probe_blocked_reason end),
+        url: $url,
+        setup_hint: (
+          if $authenticated then "API key is available via environment and validated against the local Obsidian API."
+          elif $status == "auth_failed" then "API key is present but the local Obsidian API rejected it."
+          elif $probe_blocked_reason == "non_loopback_url" then "API key is present, but Kimiflow only probes loopback Obsidian URLs to avoid leaking tokens."
+          elif $probe_blocked_reason == "missing_url" then "API key is present, but no local Obsidian URL is configured or detected."
+          elif $probe_blocked_reason == "curl_unavailable" then "API key is present, but curl is unavailable for the local validation probe."
+          elif $probe_blocked_reason == "multiline_token" then "API key is present but was not probed because multiline tokens are rejected."
+          else "API key is present in the environment but was not validated; use an authenticated MCP or verify the Local REST API key."
+          end
+        )
+      }'
+    return 0
+  fi
+
+  if [ "$available" = "true" ] || printf '%s\n' "$detection" | jq -e '.available == true' >/dev/null 2>&1; then
+    status="auth_required"
+  fi
+
+  jq -n \
+    --arg status "$status" \
+    --arg url "$url" \
+    --argjson configured "$configured" \
+    '{
+      required: true,
+      status: $status,
+      authenticated: false,
+      source: "none",
+      token_env_present: false,
+      token_source: null,
+      token_stored: false,
+      validated: false,
+      probe_http_status: null,
+      probe_allowed: false,
+      probe_blocked_reason: null,
+      url: $url,
+      setup_hint: (
+        if $status == "auth_required" and $configured then "Local Obsidian provider is connected; run provider setup for safe Codex/Claude MCP instructions without storing the API key."
+        elif $status == "auth_required" then "Obsidian was detected; run provider connect, then provider setup for safe Codex/Claude MCP instructions without storing the API key."
+        else "No local Obsidian provider is detected yet."
+        end
+      )
+    }'
+}
+
 provider_status_json() {
   local manifest_file="$1"
-  local manifest env_available available
+  local manifest env_available available detection configured auth health direct_search_ready direct_write_ready
   manifest="$(provider_manifest_json "$manifest_file")"
+  configured="$(printf '%s\n' "$manifest" | jq -r '(.updated_at != null or .type != "none")')"
+  if [ "$configured" = "true" ]; then
+    detection="$(printf '%s\n' "$manifest" | jq -c '.detection // {
+      status: "configured",
+      available: false,
+      type: (.type // "none"),
+      url: (.vault_path // ""),
+      checked_urls: [],
+      reason: null,
+      direct_write_requires_token: true,
+      manifest: null
+    }')"
+  else
+    detection="$(provider_detection_json)"
+  fi
   env_available="${KIMIFLOW_VAULT_AVAILABLE:-}"
   available="$(printf '%s\n' "$manifest" | jq -r '.available == true')"
   case "$env_available" in
     1|true|TRUE|yes|YES) available=true ;;
   esac
+  auth="$(provider_auth_json "$manifest" "$detection" "$available" "$configured")"
+  direct_search_ready="$(provider_direct_search_ready_json "$auth")"
+  direct_write_ready="$(provider_direct_write_ready_json "$auth")"
+  health="$(jq -n \
+    --argjson configured "$configured" \
+    --argjson available "$available" \
+    --argjson detection "$detection" \
+    --argjson auth "$auth" \
+    --argjson direct_search_ready "$direct_search_ready" \
+    --argjson direct_write_ready "$direct_write_ready" \
+    '{
+      status: (
+        if $auth.status == "auth_failed" then "auth_failed"
+        elif $configured and $available and $auth.authenticated then "authenticated"
+        elif $configured and $available then "connected_local_only"
+        elif ($detection.available == true) then "detected_unconfigured"
+        else "not_detected"
+        end
+      ),
+      local_handoff_ready: ($available or ($detection.available == true)),
+      direct_search_ready: $direct_search_ready,
+      direct_write_ready: $direct_write_ready,
+      rest_api_authenticated: (($auth.authenticated == true) and ($auth.source == "env")),
+      mcp_tools_authenticated: ($auth.source == "mcp"),
+      review_required: true,
+      recommended_action: (
+        if $auth.status == "auth_failed" then "check_auth"
+        elif $configured and $available and $auth.authenticated then "prefetch_or_sync"
+        elif $configured and $available then "setup_auth"
+        elif ($detection.available == true) then "connect"
+        else "open_obsidian"
+        end
+      )
+    }')"
   printf '%s\n' "$manifest" | jq \
     --arg path ".kimiflow/project/VAULT-PROVIDER.json" \
     --argjson available "$available" \
+    --argjson configured "$configured" \
+    --argjson detection "$detection" \
+    --argjson auth "$auth" \
+    --argjson health "$health" \
+    --argjson direct_search_ready "$direct_search_ready" \
+    --argjson direct_write_ready "$direct_write_ready" \
     '{
-      present: (.updated_at != null or .type != "none"),
+      present: $configured,
+      configured: $configured,
       path: $path,
       type: (.type // "none"),
       available: $available,
@@ -303,9 +819,19 @@ provider_status_json() {
         status: true,
         prefetch: $available,
         sync: $available,
-        write: $available,
-        extract: $available
-      }
+        write: false,
+        extract: false,
+        search: $direct_search_ready,
+        write_review: $available,
+        direct_search: $direct_search_ready,
+        direct_write: $direct_write_ready,
+        mcp_direct_write: $direct_write_ready,
+        rest_api_authenticated: (($auth.authenticated == true) and ($auth.source == "env")),
+        authenticated: ($auth.authenticated == true)
+      },
+      detection: $detection,
+      auth: $auth,
+      health: $health
     }'
 }
 
@@ -355,8 +881,12 @@ provider_sync_status_json() {
       pending_count: (if $provider.available == true then ($candidates | length) else 0 end),
       pending_ids: (if $provider.available == true then ($candidates | map(.id)) else [] end),
       exportable_count: ($candidates | length),
+      health_status: ($provider.health.status // "unknown"),
+      auth_status: ($provider.auth.status // "unknown"),
+      direct_write_ready: ($provider.health.direct_write_ready == true),
       status: (
-        if $provider.available != true then "provider_unavailable"
+        if $provider.available != true and ($provider.detection.available == true) then "provider_detected_unconfigured"
+        elif $provider.available != true then "provider_unavailable"
         elif ($candidates | length) > 0 then "pending"
         else "current"
         end
@@ -551,6 +1081,9 @@ status_json() {
           or ($proposals.approved > 0)
           or ($proposals.needs_revalidation > 0)
           or ($provider_sync.pending_count > 0)
+          or (($provider_sync.status == "provider_detected_unconfigured") and ($provider_sync.exportable_count > 0))
+          or ($provider.health.status == "auth_failed")
+          or (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0))
         ),
         reasons: ([
           if $memory_tokens > $budget then "memory_over_budget" else empty end,
@@ -563,7 +1096,10 @@ status_json() {
           if $proposals.pending > 0 then "learning_proposals_pending" else empty end,
           if $proposals.approved > 0 then "learning_proposals_approved" else empty end,
           if $proposals.needs_revalidation > 0 then "learning_proposals_need_revalidation" else empty end,
-          if $provider_sync.pending_count > 0 then "provider_sync_pending" else empty end
+          if $provider_sync.pending_count > 0 then "provider_sync_pending" else empty end,
+          if (($provider_sync.status == "provider_detected_unconfigured") and ($provider_sync.exportable_count > 0)) then "provider_detected_unconfigured" else empty end,
+          if $provider.health.status == "auth_failed" then "provider_auth_failed" else empty end,
+          if (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0)) then "provider_auth_required" else empty end
         ])
       }
     }'
@@ -2603,8 +3139,11 @@ write_provider_prefetch_markdown() {
     printf 'Generated: %s\n\n' "$(iso_now)"
     printf 'Provider: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.type')"
     printf 'Available: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.available')"
+    printf 'Health: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.health.status // "unknown"')"
+    printf 'Auth: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.auth.status // "unknown"')"
+    printf 'Direct search ready: %s\n' "$(printf '%s\n' "$json" | jq -r '.direct_search_ready == true')"
     printf 'Query: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.query')"
-    printf 'Use this as a bounded handoff for an Obsidian/Vault MCP search. Save only curated, publish-safe notes back through the provider.\n'
+    printf 'Use this as a bounded handoff for an Obsidian/Vault search. Direct search requires an authenticated MCP tool in the current session; a local API key may validate auth but does not by itself provide a search tool. If direct search is not ready, continue with local memory + web. Save only curated, publish-safe notes back through the provider.\n'
   } > "$path"
 }
 
@@ -2616,10 +3155,13 @@ write_provider_sync_markdown() {
     printf 'Generated: %s\n\n' "$(iso_now)"
     printf 'Provider: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.type')"
     printf 'Available: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.available')"
+    printf 'Health: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.health.status // "unknown"')"
+    printf 'Auth: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider.auth.status // "unknown"')"
+    printf 'Direct write ready: %s\n' "$(printf '%s\n' "$json" | jq -r '.direct_write_ready == true')"
     printf 'Candidates exported: %s\n' "$(printf '%s\n' "$json" | jq -r '.candidates.exported_count // .candidates.count')"
     printf 'Total pending: %s\n' "$(printf '%s\n' "$json" | jq -r '.candidates.count')"
     printf 'Omitted: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.candidates.omitted_count // 0')"
-    printf 'Policy: review this bounded handoff before writing to the Vault. It includes only current, non-private, non-security learnings with verified repo-relative evidence. Remaining candidates stay pending for a later sync.\n\n'
+    printf 'Policy: review this bounded handoff before writing to the Vault. Direct external writes require an authenticated MCP write tool in the current session; a local API key may validate auth but does not by itself provide a write tool. This handoff includes only current, non-private, non-security learnings with verified repo-relative evidence. Remaining candidates stay pending for a later sync.\n\n'
     if printf '%s\n' "$json" | jq -e '(.candidates.exported_count // .candidates.count) == 0' >/dev/null 2>&1; then
       printf 'No new publish-safe learning candidates are pending for Vault sync.\n'
     else
@@ -2637,7 +3179,7 @@ write_provider_sync_markdown() {
 cmd_provider() {
   local action="${1:-status}"
   [ "$#" -gt 0 ] && shift
-  local root="" pretty=0 type="obsidian" available="" vault_path="" query="" write=0
+  local root="" pretty=0 type="obsidian" available="" vault_path="" query="" write=0 setup_host="all"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --root) shift; root="${1:-}" ;;
@@ -2645,6 +3187,7 @@ cmd_provider() {
       --available) shift; available="${1:-}" ;;
       --path) shift; vault_path="${1:-}" ;;
       --query) shift; query="${1:-}" ;;
+      --host|--target) shift; setup_host="${1:-all}" ;;
       --write) write=1 ;;
       --pretty) pretty=1 ;;
       --help|-h) usage; exit 0 ;;
@@ -2654,7 +3197,7 @@ cmd_provider() {
   done
   need_jq
   root="$(resolve_root "$root")"
-  local project manifest provider out available_json now prefetch_path sync_path candidates export_candidates ids handoff sync_max total_count export_count omitted_count
+  local project manifest provider detection existing_manifest out available_json now prefetch_path sync_path candidates export_candidates ids handoff sync_max total_count export_count omitted_count
   project="$root/.kimiflow/project"
   manifest="$project/VAULT-PROVIDER.json"
   now="$(iso_now)"
@@ -2662,6 +3205,80 @@ cmd_provider() {
   case "$action" in
     status)
       out="$(provider_status_json "$manifest")"
+      ;;
+    health)
+      provider="$(provider_status_json "$manifest")"
+      out="$(jq -n \
+        --argjson provider "$provider" \
+        '{
+          schema_version: 1,
+          status: ($provider.health.status // "unknown"),
+          recommended_action: ($provider.health.recommended_action // "open_obsidian"),
+          health: $provider.health,
+          auth: $provider.auth,
+          detection: $provider.detection,
+          capabilities: $provider.capabilities,
+          provider: $provider
+        }')"
+      ;;
+    setup)
+      provider="$(provider_status_json "$manifest")"
+      out="$(provider_setup_plan_json "$provider" "$setup_host")"
+      ;;
+    detect|connect)
+      detection="$(provider_detection_json)"
+      if ! printf '%s\n' "$detection" | jq -e '.available == true' >/dev/null 2>&1; then
+        out="$(jq -n \
+          --arg path ".kimiflow/project/VAULT-PROVIDER.json" \
+          --argjson detection "$detection" \
+          '{
+            schema_version: 1,
+            status: "not_detected",
+            written: false,
+            path: $path,
+            detection: $detection,
+            provider: null
+          }')"
+      else
+        if [ "$action" = "connect" ]; then write=1; fi
+        if [ "$write" -eq 1 ]; then
+          existing_manifest="$(provider_manifest_json "$manifest")"
+          vault_path="$(printf '%s\n' "$detection" | jq -r '.url')"
+          out="$(jq -n \
+            --arg now "$now" \
+            --arg path "$vault_path" \
+            --argjson detection "$detection" \
+            --argjson existing "$existing_manifest" \
+            '{
+              schema_version: 1,
+              type: "obsidian",
+              available: true,
+              mode: ($existing.mode // "local-first"),
+              vault_path: $path,
+              last_prefetch_at: ($existing.last_prefetch_at // null),
+              last_write_at: ($existing.last_write_at // null),
+              synced_learning_ids: (if (($existing.synced_learning_ids // []) | type) == "array" then ($existing.synced_learning_ids // []) else [] end),
+              detection: $detection,
+              updated_at: $now
+            }')"
+          mkdir -p "$project"
+          printf '%s\n' "$out" | jq . > "$manifest"
+        fi
+        provider="$(provider_status_json "$manifest")"
+        out="$(jq -n \
+          --arg path ".kimiflow/project/VAULT-PROVIDER.json" \
+          --argjson write "$write" \
+          --argjson detection "$detection" \
+          --argjson provider "$provider" \
+          '{
+            schema_version: 1,
+            status: (if $write == 1 then "connected" else "detected" end),
+            written: ($write == 1),
+            path: $path,
+            detection: $detection,
+            provider: $provider
+          }')"
+      fi
       ;;
     configure)
       case "$available" in
@@ -2703,7 +3320,15 @@ cmd_provider() {
           --arg query "$query" \
           --arg path ".kimiflow/project/VAULT-PREFETCH.md" \
           --argjson provider "$provider" \
-          '{schema_version: 1, status: "prefetch_handoff", query: $query, path: $path, provider: $provider}')"
+          '{
+            schema_version: 1,
+            status: "prefetch_handoff",
+            query: $query,
+            path: $path,
+            provider: $provider,
+            direct_search_ready: ($provider.health.direct_search_ready == true),
+            review_required: true
+          }')"
         if [ "$write" -eq 1 ]; then
           mkdir -p "$project"
           write_provider_prefetch_markdown "$prefetch_path" "$out"
@@ -2745,6 +3370,8 @@ cmd_provider() {
             status: "sync_handoff",
             path: $path,
             provider: $provider,
+            direct_write_ready: ($provider.health.direct_write_ready == true),
+            review_required: true,
             candidates: {
               count: ($candidates | length),
               exported_count: $exported,
@@ -2768,7 +3395,7 @@ cmd_provider() {
       fi
       ;;
     *)
-      die "provider action must be status, configure, prefetch, or sync" 2
+      die "provider action must be status, health, setup, detect, connect, configure, prefetch, or sync" 2
       ;;
   esac
   json_print "$out" "$pretty"
