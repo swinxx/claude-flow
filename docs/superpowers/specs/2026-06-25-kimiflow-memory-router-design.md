@@ -17,6 +17,7 @@ Das Ziel ist nicht "mehr Kontext". Das Ziel ist besserer Kontext:
 - neue Learnings nach einem Run automatisch klassifizieren und speichern;
 - alte, doppelte oder stale Learnings konsolidieren;
 - sensible Details lokal halten oder nur entschaerft speichern;
+- bei schnell veraenderlichen Plattformen den aktuellen Stand pruefen, bevor Spec oder Plan final werden;
 - normale Feature-/Fix-/Audit-Laeufe schneller und besser geerdet machen.
 
 ## Research Input
@@ -52,6 +53,8 @@ Quellen:
   werden nur sanitisiert gespeichert.
 - Jedes dauerhafte Learning braucht Evidence, Confidence und Freshness-Metadaten.
 - Stale Wissen wird nicht still als Wahrheit geladen.
+- Modellwissen ist fuer schnell veraenderliche Technik nicht ausreichend. Bei `current_state_risk=high`
+  muss Kimiflow aktuelle Primaerquellen pruefen, bevor eine Spec oder ein Plan als belastbar gilt.
 
 ## Begriffe
 
@@ -211,11 +214,60 @@ Aus `INTENT.md`, `PROBLEM.md` oder `AUDIT-INTENT.md` erzeugt Kimiflow ein Query 
   "likely_topics": ["memory", "project-map", "vault", "launcher"],
   "likely_paths": ["SKILL.md", "reference.md", "hooks/launcher-status.sh"],
   "project_sections": ["skill_engine", "project_map", "docs_examples"],
+  "current_state_risk": "high",
   "risk": "small"
 }
 ```
 
 Das Query Profile steuert alle weiteren Reads.
+
+### Current-State Gate
+
+Kimiflow bewertet vor Spec- oder Plan-Finalisierung, ob ein Auftrag auf schnell veraenderlicher Technik
+beruht. Das ist kein pauschaler Web-Research-Zwang, sondern ein Gate gegen veraltetes Modellwissen.
+
+```json
+{
+  "current_state_risk": "high",
+  "current_state_reason": "Codex/Claude Code plugin and hook behavior changes over time",
+  "freshness_horizon": "30d",
+  "required_source_types": ["official_docs", "release_notes", "schema_or_manifest"],
+  "checked_at": null,
+  "status": "required"
+}
+```
+
+Risikostufen:
+
+| risk | Bedeutung | Verhalten |
+|---|---|---|
+| `low` | lokale Code-/Docs-Aenderung, stabile Projektkonvention | kein Web; Project Memory/Map reicht |
+| `medium` | Library/API/Tooling koennte geaendert sein | kurze Primaerquellen-Pruefung, wenn Memory nicht frisch ist |
+| `high` | Plattform, Plugin-System, Security/Auth/Payments/Deployment, externe Services | Current-State Check ist Pflicht vor Spec/Plan |
+
+High-risk Beispiele:
+
+- Codex oder Claude Code Plugin-, Skill-, Hook-, MCP- oder Marketplace-Verhalten;
+- neue oder kuerzlich geaenderte Library-/Framework-APIs;
+- Security-, Auth-, Payment-, Privacy- oder Deployment-Flows;
+- App Store, Marketplace, Release- und CI/CD-Prozesse;
+- externe Services, SDKs oder hosted APIs.
+
+Quellen-Reihenfolge:
+
+1. `.kimiflow/project/MEMORY.md`, `LEARNINGS.jsonl`, Vault und claude-mem nach frischen Treffern durchsuchen.
+2. Wenn der Treffer frisch genug ist und die konkrete Frage beantwortet, ihn verwenden und Quelle im
+   `RECALL.md` notieren.
+3. Wenn kein frischer Treffer existiert oder `risk=high`, aktuelle Primaerquellen pruefen:
+   offizielle Doku, Release Notes, Changelog, Schema/Manifest-Doku, offizielle GitHub Releases/Issues.
+4. Sekundaerquellen nur nutzen, wenn Primaerquellen fehlen; dann als `confidence=medium|low` markieren.
+
+Gate-Regel:
+
+- `current_state_risk=high` + `status != checked` bedeutet: Spec/Plan darf nicht final werden.
+- Der Check muss knapp bleiben: nur die Quellen, die die aktuelle Entscheidung beeinflussen koennen.
+- Ergebnisse werden in `RECALL.md` und bei dauerhaftem Nutzen als Learning gespeichert.
+- Wenn aktuelle Quellen eine alte lokale Memory widerlegen, wird die alte Memory `stale` oder `superseded`.
 
 ### Retrieval Reihenfolge
 
@@ -243,11 +295,17 @@ Das Query Profile steuert alle weiteren Reads.
 
    Maximal Top 5 Treffer bewerten, Top 3 Inhalte oder Snippets laden.
 
-6. **Alte Runs**
+6. **Current-State Check**
+   Nur wenn das Query Profile `current_state_risk=medium|high` meldet oder geladene Memory stale/nicht
+   eindeutig ist.
+   Bei `high` ist der Check Pflicht und nutzt Primaerquellen. Bei `medium` reicht ein frischer Memory-/Vault-Hit,
+   wenn er die konkrete Frage abdeckt.
+
+7. **Alte Runs**
    Nur wenn Query Profile direkt einen alten Slug, ein altes Finding oder ein geparktes Thema trifft. Maximal
    2 Run-Summaries laden, nie volle Logs.
 
-7. **Web Research**
+8. **Web Research**
    Nur fuer Luecken, stale Vault-Hits oder aktuelle externe Fakten.
 
 ### Ranking
@@ -427,12 +485,14 @@ Drilldown:
 ### Phase 1
 
 - Intent/Problem/Audit-Scope erzeugt Query Profile.
+- Current-State-Risk wird bewertet. Bei `high` wird der Current-State Check als Pflicht vor Spec/Plan markiert.
 - Keine breite Recherche.
 
 ### Phase 2
 
 - Memory Router laeuft vor frischer Code-Erkundung.
 - Vault/claude-mem Treffer ersetzen Web Research, wenn sie frisch und passend sind.
+- Current-State Check laeuft vor Spec-/Plan-Finalisierung, wenn das Query Profile ihn verlangt.
 - Relevante Project-Map-Sektionen werden gezielt gelesen.
 - Am Ende von Phase 2 koennen Forschungs- und Architektur-Learnings gespeichert werden, aber nur mit Evidence.
 
@@ -519,6 +579,15 @@ Vault-Verfuegbarkeit und Curator-Empfehlung.
 AC-14: Repo-Doku wird durch den Memory Router nie automatisch geschrieben; sie bleibt an explizite Storage-Ziele
 gebunden.
 
+AC-15: Kimiflow klassifiziert vor Spec- oder Plan-Finalisierung den `current_state_risk` als `low`, `medium`
+oder `high` und protokolliert die Entscheidung im Recall-Artefakt.
+
+AC-16: Bei `current_state_risk=high` darf Kimiflow keine Spec und keinen Plan finalisieren, bevor aktuelle
+Primaerquellen geprueft und im Recall-Artefakt dokumentiert wurden.
+
+AC-17: Wenn aktuelle Quellen einem gespeicherten Learning widersprechen, markiert Kimiflow das alte Learning
+als `stale` oder `superseded` und nutzt es nicht als Wahrheit.
+
 ## Nicht-Ziele fuer V1
 
 - Keine Embedding-Datenbank als Voraussetzung.
@@ -534,8 +603,9 @@ gebunden.
 
 Empfohlene Slices:
 
-1. Lokale Artefakte + Pre-Run Retrieval (`MEMORY.md`, `LEARNINGS.jsonl`, `MEMORY-INDEX.json`, `RECALL.md`).
-2. Post-run Learning Review mit automatischer Klassifizierung.
-3. Vault Recall/Write Router mit Sensitivity-Regeln.
-4. Launcher Memory-Status und einfache Controls.
-5. Curator fuer Dedupe, Staleness und Budgetpflege.
+1. Current-State Gate fuer schnell veraenderliche Technik.
+2. Lokale Artefakte + Pre-Run Retrieval (`MEMORY.md`, `LEARNINGS.jsonl`, `MEMORY-INDEX.json`, `RECALL.md`).
+3. Post-run Learning Review mit automatischer Klassifizierung.
+4. Vault Recall/Write Router mit Sensitivity-Regeln.
+5. Launcher Memory-Status und einfache Controls.
+6. Curator fuer Dedupe, Staleness und Budgetpflege.
