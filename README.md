@@ -198,7 +198,9 @@ without rereading the whole repo or Vault every time.
 
 This layer is local-first and optional-provider-aware. It works without a Vault MCP; if a Vault is connected,
 kimiflow can promote curated long-term learnings there while keeping private/security details local or
-sanitized. The launcher surfaces memory budget, learning counts, Vault availability, and curation reasons.
+sanitized. Run-close learnings are quality-gated and source-freshness checked, so vague notes and stale
+evidence do not become durable project memory. The launcher surfaces memory budget, learning counts, Vault
+availability, and curation reasons.
 
 ## Example
 
@@ -463,8 +465,9 @@ oder den ganzen Vault zu lesen.
 
 Diese Schicht ist local-first und funktioniert ohne Vault-MCP. Wenn ein Vault verbunden ist, kann kimiflow
 kuratierte Langzeit-Learnings dorthin schreiben; private oder sicherheitsrelevante Details bleiben lokal
-oder werden sanitisiert. Der Launcher zeigt Memory-Budget, Learning-Zählungen, Vault-Verfügbarkeit und
-Kuratierungsgründe.
+oder werden sanitisiert. Run-Abschluss-Learnings sind qualitätsgeprüft und source-freshness-geprüft, damit
+vage Notizen und stale Evidence nicht als dauerhaftes Projektwissen landen. Der Launcher zeigt Memory-Budget,
+Learning-Zählungen, Vault-Verfügbarkeit und Kuratierungsgründe.
 
 ## Beispiel
 

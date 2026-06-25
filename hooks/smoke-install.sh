@@ -61,7 +61,7 @@ grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "reference documents memor
 grep -q 'Current-State Gate' "$ROOT/SKILL.md" && ok "canonical skill documents Current-State Gate" || bad "missing Current-State Gate in SKILL.md"
 grep -q 'Memory Router & Learning Loop' "$ROOT/SKILL.md" && ok "canonical skill documents Memory Router" || bad "missing Memory Router in SKILL.md"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "reference documents per-section staleness" || bad "missing per-section staleness in reference.md"
-for term in MEMORY.md LEARNINGS.jsonl MEMORY-INDEX.json RECALL.md LEARNING-REVIEW.md review-run verify-run; do
+for term in MEMORY.md LEARNINGS.jsonl MEMORY-INDEX.json RECALL.md LEARNING-REVIEW.md review-run verify-run evidence_fingerprints 'Learning quality gate' 'Source freshness gate'; do
   grep -q "$term" "$ROOT/reference.md" && ok "memory artifact documented: $term" || bad "memory artifact missing: $term"
 done
 for term in 'Storage targets' 'kimiflow+vault' 'repo-docs' 'IMPROVEMENTS.md' 'DOCS-PLAN.md'; do

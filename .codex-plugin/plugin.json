@@ -1,6 +1,6 @@
 {
   "name": "kimiflow",
-  "version": "0.1.33",
+  "version": "0.1.34",
   "description": "Context-aware Kimiflow launcher, feature and bug-fix loop for Codex with mechanical quality gates, project intelligence maps, and token-cheap memory/learning recall.",
   "author": {
     "name": "kimikon",

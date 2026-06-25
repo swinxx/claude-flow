@@ -484,12 +484,100 @@ slugify() {
     | cut -c1-40
 }
 
+sha256_file() {
+  local file="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  else
+    git hash-object "$file" 2>/dev/null || printf 'NOT AVAILABLE'
+  fi
+}
+
+evidence_file_path() {
+  local root="$1" ref="$2" ref_path
+  ref_path="$(printf '%s' "$ref" | sed -E 's/:[0-9]+$//')"
+  case "$ref_path" in
+    /*) printf '%s' "$ref_path" ;;
+    *) printf '%s/%s' "$root" "$ref_path" ;;
+  esac
+}
+
+evidence_fingerprints_json() {
+  local root="$1" evidence_json="$2"
+  local out='[]' ref path rel status sha
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    path="$(evidence_file_path "$root" "$ref")"
+    rel="$(rel_path "$root" "$path")"
+    status="missing"
+    sha=""
+    if [ -f "$path" ]; then
+      status="current"
+      sha="$(sha256_file "$path")"
+    fi
+    out="$(printf '%s\n' "$out" | jq \
+      --arg ref "$ref" \
+      --arg path "$rel" \
+      --arg sha "$sha" \
+      --arg status "$status" \
+      '. + [{ref: $ref, path: $path, sha256: $sha, status: $status}]')"
+  done < <(printf '%s\n' "$evidence_json" | jq -r '.[]?')
+  printf '%s\n' "$out" | jq -c .
+}
+
+quality_gate_json() {
+  local kind="$1" summary="$2" evidence_json="$3"
+  local lower words reasons='[]'
+  lower="$(printf '%s\n' "$summary" | tr '[:upper:]' '[:lower:]')"
+  words="$(printf '%s\n' "$summary" | tr -cs '[:alnum:]_-' '\n' | awk 'length($0) > 0 {n++} END{print n+0}')"
+
+  if [ "$words" -lt 7 ]; then
+    reasons="$(printf '%s\n' "$reasons" | jq '. + ["too_short"]')"
+  fi
+  if printf '%s\n' "$lower" | grep -Eq '^(done|fixed|updated|changed|implemented|cleanup|misc|note|todo)[[:punct:][:space:]]*$|(^|[[:space:]])(various|several|stuff|things|something|some files)([[:space:]]|$)'; then
+    reasons="$(printf '%s\n' "$reasons" | jq '. + ["too_generic"]')"
+  fi
+  if [ "$(printf '%s\n' "$evidence_json" | jq 'length')" -eq 0 ] || printf '%s\n' "$evidence_json" | jq -e 'any(.[]; . == "NOT VERIFIED")' >/dev/null; then
+    reasons="$(printf '%s\n' "$reasons" | jq '. + ["missing_verified_evidence"]')"
+  fi
+
+  case "$kind" in
+    project_rule_confirmed)
+      if ! printf '%s\n' "$lower" | grep -Eq '(rule|confirmed|every|must|always|convention|standard|should|regel|bestätigt|bestaetigt|muss|immer|jede|jedes|konvention)'; then
+        reasons="$(printf '%s\n' "$reasons" | jq '. + ["project_rule_without_rule"]')"
+      fi
+      ;;
+    trap_or_pitfall)
+      if ! printf '%s\n' "$lower" | grep -Eq '(pitfall|trap|avoid|risk|do not|don'\''t|never|falle|risiko|vermeiden|nicht|niemals|achtung|surprise)'; then
+        reasons="$(printf '%s\n' "$reasons" | jq '. + ["pitfall_without_avoidance"]')"
+      fi
+      ;;
+    important_decision)
+      if ! printf '%s\n' "$lower" | grep -Eq '(decision|decided|choose|chosen|keep|use|because|trade-off|instead|entscheidung|entschieden|bleibt|nutzen|beibehalten)'; then
+        reasons="$(printf '%s\n' "$reasons" | jq '. + ["decision_without_decision"]')"
+      fi
+      ;;
+  esac
+
+  jq -n \
+    --argjson reasons "$reasons" \
+    --argjson words "$words" \
+    '{
+      ok: (($reasons | length) == 0),
+      words: $words,
+      reasons: $reasons
+    }'
+}
+
 append_learning_row() {
   local root="$1" kind="$2" scope="$3" topic="$4" summary="$5" evidence_json="$6" confidence="$7" sensitivity="$8" status="$9"
-  local project learnings source_commit id row
+  local project learnings fingerprints_json source_commit id row
   project="$root/.kimiflow/project"
   learnings="$project/LEARNINGS.jsonl"
   mkdir -p "$project"
+  fingerprints_json="$(evidence_fingerprints_json "$root" "$evidence_json")"
   if [ -f "$learnings" ]; then
     local existing_id
     existing_id="$(jq -Rsc -r \
@@ -498,6 +586,7 @@ append_learning_row() {
       --arg topic "$topic" \
       --arg summary "$summary" \
       --argjson evidence "$evidence_json" \
+      --argjson fingerprints "$fingerprints_json" \
       '
         split("\n")
         | map(select(length > 0) | (fromjson? // empty))
@@ -507,6 +596,7 @@ append_learning_row() {
             and (.topic // "") == $topic
             and (.summary // "") == $summary
             and ((.evidence // []) == $evidence)
+            and ((.evidence_fingerprints // []) == $fingerprints)
             and ((.status // "current") == "current")
           ))
         | .[0].id // ""
@@ -525,6 +615,7 @@ append_learning_row() {
     --arg topic "$topic" \
     --arg summary "$summary" \
     --argjson evidence "$evidence_json" \
+    --argjson evidence_fingerprints "$fingerprints_json" \
     --arg confidence "$confidence" \
     --arg sensitivity "$sensitivity" \
     --arg last_verified "$(date_now)" \
@@ -537,6 +628,7 @@ append_learning_row() {
       topic: $topic,
       summary: $summary,
       evidence: $evidence,
+      evidence_fingerprints: $evidence_fingerprints,
       confidence: $confidence,
       sensitivity: $sensitivity,
       last_verified: $last_verified,
@@ -587,7 +679,7 @@ first_substantive_line() {
 review_candidate_json() {
   local root="$1" run_dir="$2" question="$3" kind="$4" topic="$5"
   shift 5
-  local file path summary rel evidence_json classification target sensitivity confidence
+  local file path summary rel evidence_json classification target sensitivity confidence quality
   for file in "$@"; do
     path="$run_dir/$file"
     [ -f "$path" ] || continue
@@ -601,6 +693,7 @@ review_candidate_json() {
     confidence="$(printf '%s\n' "$classification" | jq -r '.classification.confidence')"
     [ "$target" = "skip" ] && continue
     [ "$target" = "run_only" ] && target="project_memory"
+    quality="$(quality_gate_json "$kind" "$summary" "$evidence_json")"
     jq -nc \
       --arg question "$question" \
       --arg kind "$kind" \
@@ -611,6 +704,7 @@ review_candidate_json() {
       --arg target "$target" \
       --arg sensitivity "$sensitivity" \
       --arg confidence "$confidence" \
+      --argjson quality "$quality" \
       '{
         question: $question,
         kind: $kind,
@@ -620,7 +714,8 @@ review_candidate_json() {
         evidence: $evidence,
         target: $target,
         sensitivity: $sensitivity,
-        confidence: $confidence
+        confidence: $confidence,
+        quality: $quality
       }'
     return 0
   done
@@ -686,6 +781,7 @@ write_learning_review_markdown() {
         "Kind: " + (.kind // "") + "\n" +
         "Target: " + (.target // "") + "\n" +
         "Sensitivity: " + (.sensitivity // "") + "\n" +
+        "Quality: " + (if (.quality.ok // false) then "passed" else "failed:" + (((.quality.reasons // []) | join(","))) end) + "\n" +
         "Evidence:\n" + (((.evidence // []) | map("- " + .) | join("\n"))) + "\n" +
         "Recorded: " + (.recorded_id // "pending") + "\n"
       '
@@ -752,6 +848,13 @@ cmd_review_run() {
   count="$(printf '%s\n' "$entries" | jq 'length')"
   [ "$count" -gt 0 ] || die "review-run found no reusable learning candidates; pass --skip <reason> if this run is intentionally trivial" 1
 
+  local quality_failures quality_summary
+  quality_failures="$(printf '%s\n' "$entries" | jq '[.[] | select((.quality.ok // false) != true)]')"
+  if [ "$(printf '%s\n' "$quality_failures" | jq 'length')" -gt 0 ]; then
+    quality_summary="$(printf '%s\n' "$quality_failures" | jq -r 'map(.question + ":" + ((.quality.reasons // []) | join(","))) | join(";")')"
+    die "review-run quality gate closed: $quality_summary" 1
+  fi
+
   if [ "$write" -eq 1 ]; then
     recorded='[]'
     i=0
@@ -808,7 +911,7 @@ cmd_verify_run() {
   done
   need_jq
   root="$(resolve_root "$root")"
-  local run_dir review status reason learnings ids_json ids_count missing_ids missing_csv
+  local run_dir review status reason learnings ids_json ids_count missing_ids missing_csv freshness_failures freshness_csv id row stored_fingerprints current_fingerprints evidence_json
   run_dir="$(resolve_run_dir "$root" "$run")"
   review="$run_dir/LEARNING-REVIEW.md"
   if [ ! -f "$review" ]; then
@@ -838,8 +941,33 @@ cmd_verify_run() {
         | [$ids[] | . as $id | select(($current | index($id)) == null)]
       ' "$learnings")"
       if [ "$(printf '%s\n' "$missing_ids" | jq 'length')" -eq 0 ]; then
-        printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tpath=%s\n' "$(rel_path "$root" "$review")"
-        return 0
+        freshness_failures='[]'
+        while IFS= read -r id; do
+          [ -n "$id" ] || continue
+          row="$(jq -Rsc -c --arg id "$id" '
+            split("\n")
+            | map(select(length > 0) | (fromjson? // empty))
+            | map(select((.status // "current") == "current" and (.id // "") == $id))
+            | .[0] // {}
+          ' "$learnings")"
+          evidence_json="$(printf '%s\n' "$row" | jq -c '.evidence // []')"
+          stored_fingerprints="$(printf '%s\n' "$row" | jq -c '.evidence_fingerprints // []')"
+          if [ "$(printf '%s\n' "$stored_fingerprints" | jq 'length')" -eq 0 ]; then
+            freshness_failures="$(printf '%s\n' "$freshness_failures" | jq --arg id "$id" '. + [{id: $id, reason: "missing_evidence_fingerprints"}]')"
+            continue
+          fi
+          current_fingerprints="$(evidence_fingerprints_json "$root" "$evidence_json")"
+          if [ "$stored_fingerprints" != "$current_fingerprints" ]; then
+            freshness_failures="$(printf '%s\n' "$freshness_failures" | jq --arg id "$id" '. + [{id: $id, reason: "evidence_changed_or_missing"}]')"
+          fi
+        done < <(printf '%s\n' "$ids_json" | jq -r '.[]')
+        if [ "$(printf '%s\n' "$freshness_failures" | jq 'length')" -eq 0 ]; then
+          printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tfreshness=current\tpath=%s\n' "$(rel_path "$root" "$review")"
+          return 0
+        fi
+        freshness_csv="$(printf '%s\n' "$freshness_failures" | jq -r 'map(.id + ":" + .reason) | join(",")')"
+        printf 'LEARNING_REVIEW\tCLOSED\treason=evidence_stale\tids=%s\tpath=%s\n' "$freshness_csv" "$(rel_path "$root" "$review")"
+        return 1
       fi
       missing_csv="$(printf '%s\n' "$missing_ids" | jq -r 'join(",")')"
       printf 'LEARNING_REVIEW\tCLOSED\treason=recorded_ids_missing_or_not_current\tids=%s\tpath=%s\n' "$missing_csv" "$(rel_path "$root" "$review")"

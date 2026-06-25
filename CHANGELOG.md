@@ -2,6 +2,20 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## 0.1.34
+
+Add **quality and source-freshness gates** to the Learning Loop.
+
+### Added
+- `review-run` now blocks low-quality learning candidates before writing: too short, generic, missing verified
+  evidence, decisions without a decision, rules without a rule, or pitfalls without an avoidance signal.
+- Learning rows now include `evidence_fingerprints` so `verify-run` can detect when source evidence changed
+  after the run-close review.
+- `verify-run` now returns `CLOSED reason=evidence_stale` when a recorded learning's evidence file changed,
+  is missing, or lacks a current fingerprint.
+- Memory-router tests cover evidence fingerprints, stale evidence, refresh after evidence changes, and
+  low-quality learning rejection.
+
 ## 0.1.33
 
 Harden the **Learning Loop close gate** after code review.

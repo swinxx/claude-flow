@@ -99,14 +99,40 @@ out="$(run_router review-run --run .kimiflow/demo-run --write)"
 assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and .memory_updated == true' "review_run_records_four_questions"
 [ -f "$REPO/.kimiflow/demo-run/LEARNING-REVIEW.md" ] && pass "review_run_writes_review" || fail "review_run_writes_review"
 [ -f "$REPO/.kimiflow/project/MEMORY.md" ] && pass "review_run_writes_bounded_memory" || fail "review_run_writes_bounded_memory"
+assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(select(.evidence_fingerprints and (.evidence_fingerprints | length > 0 and all(.[]; .status == "current" and (.sha256 | length > 0))))) | length >= 4' "review_run_records_evidence_fingerprints"
 out="$(run_router verify-run --run .kimiflow/demo-run)"
-printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=recorded' && pass "verify_run_opens_recorded_review" || fail "verify_run_opens_recorded_review"
+printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=recorded	freshness=current' && pass "verify_run_opens_recorded_review" || fail "verify_run_opens_recorded_review"
 assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(.kind) | index("learned") and index("project_rule_confirmed") and index("trap_or_pitfall") and index("important_decision")' "review_run_records_expected_kinds"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.learnings.total >= 8 and (.topics.decisions | length >= 1)' "review_run_refreshes_index"
 before_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
 out="$(run_router review-run --run .kimiflow/demo-run --write)"
 after_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
 [ "$before_count" = "$after_count" ] && pass "review_run_is_idempotent" || fail "review_run_is_idempotent"
+
+cat >> "$REPO/.kimiflow/demo-run/RESEARCH.md" <<'EOF'
+The evidence changed after the review, so the stored fingerprint must be refreshed.
+EOF
+if run_router verify-run --run .kimiflow/demo-run >/dev/null 2>&1; then
+  fail "verify_run_blocks_stale_evidence"
+else
+  pass "verify_run_blocks_stale_evidence"
+fi
+out="$(run_router review-run --run .kimiflow/demo-run --write)"
+out="$(run_router verify-run --run .kimiflow/demo-run)"
+printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=recorded	freshness=current' && pass "review_run_refreshes_stale_evidence" || fail "review_run_refreshes_stale_evidence"
+
+mkdir -p "$REPO/.kimiflow/bad-run"
+cat > "$REPO/.kimiflow/bad-run/RESEARCH.md" <<'EOF'
+Memory recall should run before web research when a local project map can answer the question.
+EOF
+cat > "$REPO/.kimiflow/bad-run/PLAN.md" <<'EOF'
+The implementation changes several things in some files.
+EOF
+if run_router review-run --run .kimiflow/bad-run --write >/dev/null 2>&1; then
+  fail "review_run_blocks_low_quality_learning"
+else
+  pass "review_run_blocks_low_quality_learning"
+fi
 
 mkdir -p "$REPO/.kimiflow/fake-review"
 cat > "$REPO/.kimiflow/fake-review/LEARNING-REVIEW.md" <<'EOF'

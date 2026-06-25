@@ -653,6 +653,18 @@ memory-router.sh curate [--write]
 from being marked done. Trivial runs may use `review-run --write --skip "<reason>"`, but the reason must be
 written to `LEARNING-REVIEW.md` and verified. Summaries should be in the user's language.
 
+**Learning quality gate:** `review-run --write` must fail closed before writing if a candidate is too short,
+generic, missing verified evidence, a project-rule answer without a rule/convention signal, a pitfall without
+an avoidance/risk signal, or an important decision without a concrete decision signal. The generated
+`LEARNING-REVIEW.md` prints `Quality: passed` for accepted rows. Quality failures stay in the run and should
+be fixed in the source artifact rather than promoted to memory.
+
+**Source freshness gate:** every learning row written by `review-run` stores `evidence_fingerprints`
+(path + sha256 + status). `verify-run` recomputes those fingerprints from the referenced evidence files. If
+any recorded row points to missing/changed evidence, lacks fingerprints, or is no longer `current`,
+`verify-run` returns `CLOSED` (for example `reason=evidence_stale`) and the run cannot be marked done until
+the review is refreshed or explicitly skipped with a reason.
+
 **Four-question schema:** every non-skipped review records only compact, verified answers to:
 
 - `what_was_learned` — what reusable fact/pattern did this run prove?
