@@ -20,26 +20,19 @@ Das Ziel ist nicht "mehr Kontext". Das Ziel ist besserer Kontext:
 - bei schnell veraenderlichen Plattformen den aktuellen Stand pruefen, bevor Spec oder Plan final werden;
 - normale Feature-/Fix-/Audit-Laeufe schneller und besser geerdet machen.
 
-## Research Input
+## Design Input
 
-Hermes Agent ist fuer diese Spec der wichtigste Vergleichspunkt:
+Die Spec buendelt bewaehrte Memory- und Recall-Pattern fuer Kimiflow:
 
-- Hermes nutzt bounded Memory: kleine `MEMORY.md` / `USER.md` Snapshots werden automatisch in neue Sessions
-  geladen, bleiben aber hart begrenzt.
-- Hermes speichert volle Session-History in SQLite mit FTS5 und nutzt Suche statt Vollkontext.
-- Hermes trennt stabile Prompt-Schichten, Projektkontext, Memory und ephemere Overlays, um Prompt-Caching
-  und Memory-Korrektheit zu schuetzen.
-- Hermes komprimiert Kontext bei Druck statt unendlich zu wachsen.
-- Hermes hat einen Curator, der agent-erzeugte Skills beobachtet, stale/archived setzt und Konsolidierung
-  optional macht.
-
-Quellen:
-
-- https://hermes-agent.nousresearch.com/docs/user-guide/features/memory
-- https://hermes-agent.nousresearch.com/docs/developer-guide/session-storage
-- https://hermes-agent.nousresearch.com/docs/developer-guide/prompt-assembly
-- https://hermes-agent.nousresearch.com/docs/developer-guide/context-compression-and-caching
-- https://hermes-agent.nousresearch.com/docs/user-guide/features/curator
+- Kleine `MEMORY.md` / `USER.md` Snapshots werden automatisch in neue Sessions geladen, bleiben aber hart
+  begrenzt.
+- Umfangreiche Run-, Projekt- und Session-History wird lokal suchbar gemacht, statt als Vollkontext geladen zu
+  werden.
+- Stabile Projektregeln, Projektkontext, Memory und ephemere Run-Overlays bleiben klar getrennt, damit Prompt-
+  und Memory-Korrektheit geschuetzt bleiben.
+- Kontext wird bei Druck komprimiert und konsolidiert, statt unendlich zu wachsen.
+- Kuratierung setzt stale/archived/superseded Status und macht dauerhafte Skill- oder Regeluebernahmen
+  reviewbar.
 
 ## Leitprinzipien
 
@@ -108,9 +101,20 @@ V1 erweitert `.kimiflow/project/` um kleine Memory-Artefakte:
 ```text
 .kimiflow/project/
   MEMORY.md
+  USER.md
   LEARNINGS.jsonl
+  USER.jsonl
   MEMORY-INDEX.json
+  MEMORY-USAGE.json
   RECALL.md
+  RECALL.sqlite
+  RUN-HISTORY.json
+  RUN-HISTORY.md
+  VAULT-PROVIDER.json
+  VAULT-PREFETCH.md
+  PROPOSALS.jsonl
+  PENDING-PROPOSALS.md
+  SKILL-DRAFTS/
 ```
 
 ### `MEMORY.md`
@@ -181,6 +185,39 @@ Recall-Snapshot in `.kimiflow/project/` gehalten. Inhalt:
 - welche Treffer geladen wurden;
 - welche Treffer wegen Budget, Staleness oder Sensitivity ausgelassen wurden;
 - geschaetztes Tokenbudget.
+
+### `RUN-HISTORY.json` / `RUN-HISTORY.md`
+
+On-demand Session-/Run-Suche. Kimiflow durchsucht alte Run-Artefakte (`PLAN.md`, `ACCEPTANCE.md`,
+`CODE-REVIEW.md`, `LEARNING-REVIEW.md`, `STATE.md` usw.) nur gezielt und schreibt einen gekappten Snapshot.
+Das verhindert, dass komplette alte Runs in den Prompt geladen werden.
+
+### `MEMORY-USAGE.json`
+
+Lokale Curator-Metriken. Persistierte Recall-/History-Schreibvorgaenge erhoehen `use_count` und setzen
+`last_used_at` fuer Treffer. `curate --write` faltet diese Metriken in `MEMORY-INDEX.json`, damit Kimiflow
+spaeter sieht, welche Learnings tatsaechlich genutzt werden und welche alt/ungenutzt sind.
+
+### `VAULT-PROVIDER.json` / `VAULT-PREFETCH.md`
+
+Lokale Provider-Schicht fuer Obsidian/Vault. Der Router speichert Verfuegbarkeit und einen bounded Prefetch-
+Handoff, blockiert aber nie, wenn kein MCP/API-Key vorhanden ist.
+
+### `PROPOSALS.jsonl` und `PENDING-PROPOSALS.md`
+
+`PROPOSALS.jsonl` ist der maschinenlesbare lokale Approval-State fuer Learnings, die zu Regeln, Entscheidungen
+oder Workflow-/Skill-Verbesserungen werden koennen. `PENDING-PROPOSALS.md` ist die lesbare Review-Ansicht.
+
+Status:
+
+- `pending`: wartet auf Review.
+- `approved`: darf angewendet werden.
+- `rejected`: bewusst verworfen, mit Grund.
+- `applied`: wurde lokal in `.kimiflow/STANDARDS.md` oder `.kimiflow/DECISIONS.md` uebernommen.
+- `needs_revalidation`: Evidence hat sich geaendert; Review/Proposal muss aktualisiert werden.
+
+Skill-/Workflow-Kandidaten erzeugen nach Approval nur reviewbare Drafts unter `SKILL-DRAFTS/`; Kimiflow patcht
+keine kanonischen Skill-Dateien automatisch.
 
 ## Slice 1: Pre-Run Hydration und Retrieval Router
 
@@ -377,10 +414,10 @@ Kimiflow fragt nicht fuer jeden Write. Default:
 - `repo_doc_candidate`: nicht automatisch schreiben; nur als Vorschlag oder bei Storage-Ziel `repo-docs`.
 - `security`/`private`: lokal halten oder sanitisiert in Vault, nie konkret in Repo-Doku.
 
-Nach dem Run reicht eine kurze Meldung:
+Nach dem Run reicht eine kurze Meldung inklusive Proposal-Zustand:
 
 ```text
-Memory aktualisiert: 2 Projekt-Learnings, 1 Vault-Notiz, 0 Repo-Doku.
+Memory aktualisiert: 2 Projekt-Learnings. Learning proposals: 3 pending, 0 approved, 0 applied, 0 rejected.
 ```
 
 Details gibt es nur auf Wunsch ueber Launcher/Memory-Status.

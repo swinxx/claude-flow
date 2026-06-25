@@ -126,12 +126,22 @@ default_memory_status() {
     paths: {
       memory: ".kimiflow/project/MEMORY.md",
       learnings: ".kimiflow/project/LEARNINGS.jsonl",
+      proposals: ".kimiflow/project/PROPOSALS.jsonl",
       index: ".kimiflow/project/MEMORY-INDEX.json",
-      recall: ".kimiflow/project/RECALL.md"
+      recall: ".kimiflow/project/RECALL.md",
+      recall_index: ".kimiflow/project/RECALL.sqlite",
+      run_history: ".kimiflow/project/RUN-HISTORY.json",
+      usage: ".kimiflow/project/MEMORY-USAGE.json",
+      provider: ".kimiflow/project/VAULT-PROVIDER.json"
     },
     memory: {present: false, path: ".kimiflow/project/MEMORY.md", tokens_estimate: 0, budget: 900, over_budget: false},
     learnings: {present: false, path: ".kimiflow/project/LEARNINGS.jsonl", total: 0, current: 0, stale: 0, superseded: 0, archived: 0, private: 0, security: 0, by_topic: {}},
-    vault: {available: false, last_recall_at: null, last_write_at: null},
+    lifecycle: {stale_after_days: 90, cutoff_date: null, current: 0, stale_candidates: 0, stale_candidate_ids: [], unused_current: 0, used_current: 0},
+    usage: {present: false, path: ".kimiflow/project/MEMORY-USAGE.json", tracked_items: 0, total_uses: 0, last_used_at: null, by_kind: {}},
+    proposals: {present: false, path: ".kimiflow/project/PROPOSALS.jsonl", total: 0, pending: 0, approved: 0, applied: 0, rejected: 0, needs_revalidation: 0, by_type: {}},
+    history: {present: false, path: ".kimiflow/project/RUN-HISTORY.json"},
+    provider: {present: false, path: ".kimiflow/project/VAULT-PROVIDER.json", type: "none", available: false, mode: "local-first", vault_path: "", last_prefetch_at: null, last_write_at: null, capabilities: {status: true, prefetch: false, write: false, extract: false}},
+    vault: {available: false, last_recall_at: null, last_write_at: null, provider: null},
     curation: {recommended: false, reasons: ["memory_router_unavailable"]}
   }'
 }
@@ -312,6 +322,15 @@ if [ "$BACKLOG" -gt 0 ]; then
 fi
 if printf '%s\n' "$MEMORY_JSON" | jq -e '.curation.recommended == true' >/dev/null 2>&1; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "memory_curation_recommended")"
+fi
+if printf '%s\n' "$MEMORY_JSON" | jq -e '(.proposals.pending // 0) > 0' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "learning_proposals_pending")"
+fi
+if printf '%s\n' "$MEMORY_JSON" | jq -e '(.proposals.approved // 0) > 0' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "learning_proposals_approved")"
+fi
+if printf '%s\n' "$MEMORY_JSON" | jq -e '(.proposals.needs_revalidation // 0) > 0' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "learning_proposals_need_revalidation")"
 fi
 out="$(jq -n \
   --arg root "$ROOT" \

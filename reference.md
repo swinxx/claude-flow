@@ -606,9 +606,21 @@ files work without any API key, subscription, or MCP server.
 ```text
 .kimiflow/project/
   MEMORY.md          small always-on summary, target 500-900 tokens
+  USER.md            small local-only user/workflow profile
   LEARNINGS.jsonl    evidence-backed durable learnings
+  USER.jsonl         evidence-backed user/workflow preferences
   MEMORY-INDEX.json  cheap lookup/curation index
+  MEMORY-USAGE.json  local use_count/last_used metrics for recalled items
+  RECALL.sqlite      optional local FTS5 recall index
   RECALL.md          last/project recall log, or run-local recall when written there
+  RUN-HISTORY.json   last on-demand run/session history snapshot
+  RUN-HISTORY.md     readable run/session history snapshot
+  VAULT-PROVIDER.json local optional Vault/Obsidian provider manifest
+  VAULT-PREFETCH.md  bounded handoff for a connected Vault MCP
+  PENDING-PROPOSALS.md review-only rule/skill proposal candidates
+  PROPOSALS.jsonl    local proposal approval state
+  SKILL-DRAFTS/      review-only skill/workflow draft notes
+  LEARNINGS.archive.jsonl non-active archived learning rows after consolidation
 
 .kimiflow/<slug>/
   LEARNING-REVIEW.md required run-close artifact; recorded or explicitly skipped
@@ -621,11 +633,16 @@ plugin-root rule as other helpers):
 ```text
 memory-router.sh status [--root <path>] [--pretty]
 memory-router.sh recall --query <text>|--query-file <path> [--max <n>] [--write <path>]
+memory-router.sh history [--query <text>|--query-file <path>] [--max <n>] [--write]
 memory-router.sh classify --input <path>|--text <text>
 memory-router.sh record --summary <text> --topic <topic> --evidence <ref>...
 memory-router.sh review-run --run <path> [--write] [--skip <reason>]
 memory-router.sh verify-run --run <path>
 memory-router.sh curate [--write]
+memory-router.sh index [--write]
+memory-router.sh consolidate [--write]
+memory-router.sh propose [--write] [--approve <id>] [--reject <id>] [--reason <why>] [--apply]
+memory-router.sh provider <status|configure|prefetch> [--type <obsidian|none>] [--available <true|false>] [--path <path>]
 ```
 
 **Pre-run hydration:**
@@ -638,18 +655,20 @@ memory-router.sh curate [--write]
    still needed. Missing memory never blocks the run.
 
 **Retrieval order (token budget):**
-1. Always-on memory (`MEMORY.md`, bounded).
+1. Always-on project/user memory (`MEMORY.md` + optional `USER.md`, bounded).
 2. Project map index and relevant facts/sections (`INDEX.json`, `FACTS.jsonl`, selected markdown).
-3. Local learnings (`LEARNINGS.jsonl` hits from `memory-router.sh recall`).
-4. Vault/claude-mem recall when connected.
-5. Current-state primary-source check when the Current-State Gate requires it.
-6. Old run artifacts only when their slug/paths match.
+3. Local FTS5 recall (`RECALL.sqlite`) when available, plus `LEARNINGS.jsonl`/`USER.jsonl` and old-run fallback hits.
+4. On-demand run/session history via `history` or `recall`'s `sources.history` hits.
+5. Vault/claude-mem recall when connected.
+6. Current-state primary-source check when the Current-State Gate requires it.
 7. Web research only for uncovered, stale, or fast-moving external facts.
 
 **Post-run learning loop (required before `Status: done`):** after verification/review and before closing
 `STATE.md`, run `memory-router.sh review-run --run .kimiflow/<slug> --write`. It creates the run-local
 `LEARNING-REVIEW.md`, appends durable rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`, and refreshes
-`MEMORY-INDEX.json`. Then run `memory-router.sh verify-run --run .kimiflow/<slug>`; `CLOSED` blocks the run
+`MEMORY-INDEX.json`, optional `RECALL.sqlite`, and lifecycle/usage metadata. It also refreshes local proposal state and returns a compact notification with pending,
+approved, applied, and rejected proposal counts. Then run `memory-router.sh verify-run --run .kimiflow/<slug>`;
+`CLOSED` blocks the run
 from being marked done. Trivial runs may use `review-run --write --skip "<reason>"`, but the reason must be
 written to `LEARNING-REVIEW.md` and verified. Summaries should be in the user's language.
 
@@ -660,10 +679,51 @@ an avoidance/risk signal, or an important decision without a concrete decision s
 be fixed in the source artifact rather than promoted to memory.
 
 **Source freshness gate:** every learning row written by `review-run` stores `evidence_fingerprints`
-(path + sha256 + status). `verify-run` recomputes those fingerprints from the referenced evidence files. If
+(repo-relative path + digest algorithm + digest + optional sha256 + status). Outside-repo evidence paths are
+persisted only as `OUTSIDE_REPO`. `verify-run` recomputes fingerprints from the referenced evidence files. If
 any recorded row points to missing/changed evidence, lacks fingerprints, or is no longer `current`,
 `verify-run` returns `CLOSED` (for example `reason=evidence_stale`) and the run cannot be marked done until
-the review is refreshed or explicitly skipped with a reason.
+the review is refreshed or explicitly skipped with a reason. When a refreshed learning replaces an older
+fingerprint for the same evidence, the older row becomes `superseded`; recall returns only `current` rows.
+
+**Memory write security gate:** every active row written through `record`/`review-run` is scanned for prompt
+injection, instruction override, credential exfiltration, and hidden Unicode markers. Unsafe current rows fail
+closed before they can enter always-on memory. Security-sensitive content may still be kept only as explicit,
+non-current/local review material when an operator deliberately records it that way.
+
+**User profile split:** `record --scope user` writes to `USER.jsonl` and refreshes bounded `USER.md`. User/workflow
+preferences stay local-only and are never repo-doc candidates. Project facts stay in `LEARNINGS.jsonl`.
+
+**Local run/session history:** `memory-router.sh history --query "<task>" --write` searches bounded old Kimiflow
+run artifacts and writes `RUN-HISTORY.json` plus `RUN-HISTORY.md`. `recall` also reports `sources.history` hits,
+so Phase 2 can reuse old plans/reviews without loading whole run folders.
+
+**Usage and lifecycle metrics:** persisted recall/history writes update `MEMORY-USAGE.json` with `use_count` and
+`last_used_at`. `curate --write` folds those metrics into `MEMORY-INDEX.json` and reports lifecycle data such as
+stale learning candidates, unused current rows, and the configured `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window.
+
+**Local FTS5 recall:** `memory-router.sh index --write` builds `.kimiflow/project/RECALL.sqlite` when `sqlite3`
+is available. It indexes bounded memory, user profile, current learnings, facts, and old run artifacts.
+`curate --write` and `review-run --write` refresh it opportunistically. `recall` reports index hits without
+requiring the index; missing SQLite falls back to JSONL and run-history matching.
+
+**Optional Vault provider:** `memory-router.sh provider status` exposes the local provider manifest. `provider
+configure --type obsidian --available true --path <vault>` writes `.kimiflow/project/VAULT-PROVIDER.json`;
+`provider prefetch --query "<task>" --write` writes a bounded `VAULT-PREFETCH.md` handoff for an Obsidian/Vault
+MCP. The router never requires a paid provider or API key and never blocks when the provider is absent.
+
+**Consolidation:** `memory-router.sh consolidate --write` archives superseded learning rows to
+`LEARNINGS.archive.jsonl`, refreshes bounded memory/profile/index files, and never silently deletes data. It is
+safe to preview without `--write`.
+
+**Rule/skill proposal approval:** `memory-router.sh propose --write` derives review-only candidates from current,
+evidence-backed learnings and writes `.kimiflow/project/PENDING-PROPOSALS.md` plus local state in
+`.kimiflow/project/PROPOSALS.jsonl`. Approve or reject by learning/proposal id:
+`propose --approve <id>`, `propose --reject <id> --reason "<why>"`. `propose --apply` appends approved
+standard and decision candidates to local `.kimiflow/STANDARDS.md` and `.kimiflow/DECISIONS.md`. Approved
+skill/workflow candidates create review-only drafts under `.kimiflow/project/SKILL-DRAFTS/`; Kimiflow does not
+patch `SKILL.md`, `reference.md`, or repo docs automatically. Approve/apply revalidates evidence fingerprints fail-closed; stale candidates move to
+`needs_revalidation` and must be refreshed through the learning review before they can be applied.
 
 **Four-question schema:** every non-skipped review records only compact, verified answers to:
 
@@ -688,10 +748,12 @@ the review is refreshed or explicitly skipped with a reason.
   token values, private paths, or raw risk findings into repo docs.
 
 **Curator:** `memory-router.sh status` reports `curation.recommended` and reasons such as `memory_over_budget`,
-`stale_learnings`, `superseded_learnings`, `memory_index_missing`, or `many_learnings`. `review-run --write`
-refreshes the small always-on `MEMORY.md`; `curate --write` is non-destructive in V1 and writes/refreshes
-`MEMORY-INDEX.json`. Neither command deletes or rewrites existing learning rows. Destructive dedupe, summary
-rewrites, and stale pruning require a later explicit curation slice.
+`stale_learnings`, `superseded_learnings`, `learning_lifecycle_review_due`, `memory_index_missing`, `recall_index_missing`,
+`learning_proposals_pending`, `learning_proposals_approved`, `learning_proposals_need_revalidation`, or
+`many_learnings`.
+`review-run --write` refreshes the small always-on `MEMORY.md`; `curate --write` writes/refreshes
+`MEMORY-INDEX.json`, lifecycle metrics, provider status, and the optional recall index. Row archival is explicit
+through `consolidate --write`.
 
 ---
 

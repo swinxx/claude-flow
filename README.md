@@ -190,8 +190,10 @@ you explicitly ask for a sanitized public note.
 
 ## Memory Router
 
-Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `LEARNINGS.jsonl`,
-`MEMORY-INDEX.json`, and `RECALL.md`; each completed run also gets a run-local `LEARNING-REVIEW.md`.
+Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
+`LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`,
+and review-only `SKILL-DRAFTS/`; each completed run also gets a run-local `LEARNING-REVIEW.md`.
 `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time.
@@ -199,8 +201,17 @@ without rereading the whole repo or Vault every time.
 This layer is local-first and optional-provider-aware. It works without a Vault MCP; if a Vault is connected,
 kimiflow can promote curated long-term learnings there while keeping private/security details local or
 sanitized. Run-close learnings are quality-gated and source-freshness checked, so vague notes and stale
-evidence do not become durable project memory. The launcher surfaces memory budget, learning counts, Vault
-availability, and curation reasons.
+evidence do not become active project memory. Evidence references are stored repo-relative; outside-repo paths
+are collapsed to `OUTSIDE_REPO`. When evidence changes, refreshed rows supersede older rows and recall returns
+only current learnings. Recall can also search bounded old run artifacts and records use-count/last-used metrics
+only when a recall/history snapshot is written. Memory writes are scanned for prompt-injection/exfiltration
+patterns, user preferences are split into local-only profile files, and `propose`/`consolidate` turn accumulated
+learning into reviewable rule/skill proposals and compacted history. Proposal state supports `--approve`,
+`--reject`, and `--apply`; approved standards/decisions can be appended to local `.kimiflow/` docs, while skill
+candidates create review-only draft notes instead of patching skills automatically.
+Approve/apply revalidates evidence first, so stale proposals stay local until refreshed.
+The launcher surfaces memory budget, learning counts, run-history/usage/provider status, pending proposal
+notifications, Vault availability, and curation reasons.
 
 ## Example
 
@@ -456,9 +467,11 @@ außer du verlangst explizit eine sanitisierte öffentliche Notiz.
 
 ## Memory Router
 
-Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`,
-`LEARNINGS.jsonl`, `MEMORY-INDEX.json` und `RECALL.md`; jeder abgeschlossene Run bekommt zusätzlich eine
-run-lokale `LEARNING-REVIEW.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
+Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
+`LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`
+und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich eine run-lokale
+`LEARNING-REVIEW.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
 Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu klassifizieren, die
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
 oder den ganzen Vault zu lesen.
@@ -466,8 +479,17 @@ oder den ganzen Vault zu lesen.
 Diese Schicht ist local-first und funktioniert ohne Vault-MCP. Wenn ein Vault verbunden ist, kann kimiflow
 kuratierte Langzeit-Learnings dorthin schreiben; private oder sicherheitsrelevante Details bleiben lokal
 oder werden sanitisiert. Run-Abschluss-Learnings sind qualitätsgeprüft und source-freshness-geprüft, damit
-vage Notizen und stale Evidence nicht als dauerhaftes Projektwissen landen. Der Launcher zeigt Memory-Budget,
-Learning-Zählungen, Vault-Verfügbarkeit und Kuratierungsgründe.
+vage Notizen und stale Evidence nicht als aktives Projektwissen landen. Evidence-Referenzen werden repo-relativ
+gespeichert; Pfade außerhalb des Repos werden zu `OUTSIDE_REPO` zusammengefasst. Wenn sich Evidence ändert,
+superseded der Refresh ältere Zeilen und Recall liefert nur aktuelle Learnings. Recall kann zusätzlich bounded
+alte Run-Artefakte durchsuchen und schreibt Use-Count/Last-Used-Metriken nur dann, wenn ein Recall-/History-
+Snapshot gespeichert wird. Memory-Writes werden auf Prompt-Injection/Exfiltration gescannt, User-Präferenzen
+liegen in lokalen Profil-Dateien, und `propose`/`consolidate` machen aus Learnings reviewbare Regel-/Skill-
+Vorschläge und kompakte Historie. Proposal-State unterstützt `--approve`, `--reject` und `--apply`;
+freigegebene Standards/Entscheidungen können lokal in `.kimiflow/` landen, Skill-Kandidaten erzeugen
+reviewbare Draft-Notizen statt automatische Skill-Patches. Approve/apply prüft Evidence vorher erneut, stale
+Vorschläge bleiben lokal bis zum Refresh. Der Launcher zeigt Memory-Budget, Learning-Zählungen,
+Run-History-/Usage-/Provider-Status, pending Proposal Notifications, Vault-Verfügbarkeit und Kuratierungsgründe.
 
 ## Beispiel
 

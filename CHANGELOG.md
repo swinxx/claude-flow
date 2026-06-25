@@ -2,6 +2,31 @@
 
 Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
+## Unreleased
+
+### Added
+- Memory Router now supports optional local FTS5 recall via `.kimiflow/project/RECALL.sqlite` and `index --write`.
+- Added `history --query ... --write` for bounded old-run/session recall snapshots in `RUN-HISTORY.json` /
+  `RUN-HISTORY.md`.
+- Added persisted recall/history usage metrics in `MEMORY-USAGE.json` plus lifecycle curation metadata in
+  `MEMORY-INDEX.json`.
+- Added `provider status|configure|prefetch` for local optional Vault/Obsidian provider manifests and bounded
+  `VAULT-PREFETCH.md` handoffs.
+- Added `record --scope user` with local-only `USER.jsonl` / `USER.md` profile memory.
+- Added `consolidate --write` to archive superseded learning rows without silent deletion.
+- Added `propose --write` to generate review-only rule/skill proposals from evidence-backed learnings.
+- Approved skill/workflow proposals now create review-only drafts under `.kimiflow/project/SKILL-DRAFTS/` instead
+  of patching skill files automatically.
+
+### Fixed
+- Refreshed learning rows now supersede older rows with changed evidence fingerprints, and recall returns only
+  `current` learnings.
+- Outside-repo evidence paths are sanitized to `OUTSIDE_REPO` before persistence.
+- Evidence fingerprints now store an explicit digest algorithm and digest; `sha256` is populated only when the
+  digest is actually SHA-256.
+- Active memory writes are now blocked when they contain prompt-injection, hidden-instruction, or credential
+  exfiltration patterns.
+
 ## 0.1.34
 
 Add **quality and source-freshness gates** to the Learning Loop.

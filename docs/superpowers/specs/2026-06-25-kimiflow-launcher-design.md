@@ -25,8 +25,8 @@ geaendert haben. Der Launcher soll beide Probleme loesen:
 
 ## Research Input
 
-- Hermes Agent zeigt den Wert von TUI, Slash-Autocomplete, Resume und Memory, aber offene Issues zeigen auch
-  die Risiken stale Memory/Skill-Writes und stale Resume-Kontext.
+- Agentische Launcher zeigen den Wert von TUI, Slash-Autocomplete, Resume und Memory; das stale-plan Risiko
+  bleibt dabei die wichtigste Safety-Grenze.
 - Aider zeigt den Wert klarer Modi (`ask`, `code`, `architect`) und Repo-Maps. Die Architect/Editor-Trennung
   ist nuetzlich, braucht aber Trust-Boundaries zwischen Planung und Umsetzung.
 - OpenCode trennt Plan/Build und read-only Explore/Scout Agents. Das bestaetigt: Erst Zustand/Plan lesen,
@@ -36,10 +36,6 @@ geaendert haben. Der Launcher soll beide Probleme loesen:
 
 Quellen:
 
-- https://github.com/nousresearch/hermes-agent
-- https://hermes-agent.nousresearch.com/docs/guides/tips
-- https://github.com/NousResearch/hermes-agent/issues/9055
-- https://github.com/NousResearch/hermes-agent/issues/35344
 - https://aider.chat/docs/usage/modes.html
 - https://aider.chat/
 - https://opencode.ai/docs/agents/
@@ -83,6 +79,7 @@ project_map: missing | quick | standard | deep
 project_map_status: current | partially_stale | stale | unknown | missing
 findings_open: <n>
 improvements_open: <n>
+learning_proposals_pending: <n>
 parked_runs: <n>
 active_runs: <n>
 repo_docs: present | missing | unknown
@@ -116,6 +113,7 @@ Kimiflow Start
 
 Projektkarte: standard · aktuell
 Offene Findings: 4
+Learning-Proposals: 3 offen
 Geparkte Runs: 2
 Repo-Doku: vorhanden
 Working Tree: geaendert
@@ -125,12 +123,13 @@ Was willst du tun?
 1. Status ansehen
 2. Projektkarte pruefen/aktualisieren
 3. Offene Findings ansehen/abarbeiten
-4. Geparkten Run fortsetzen
-5. Bug fixen
-6. Feature bauen
-7. Verbesserungen priorisieren
-8. Doku schreiben/aktualisieren
-9. Idee/unklaren Auftrag ausarbeiten
+4. Learning-Proposals pruefen
+5. Geparkten Run fortsetzen
+6. Bug fixen
+7. Feature bauen
+8. Verbesserungen priorisieren
+9. Doku schreiben/aktualisieren
+10. Idee/unklaren Auftrag ausarbeiten
 ```
 
 Wenn keine Map existiert:

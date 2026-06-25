@@ -149,12 +149,32 @@ EOF
 cat > "$REPO/.kimiflow/project/LEARNINGS.jsonl" <<'EOF'
 {"id":"learn_memory","kind":"process","scope":"project","topic":"memory","summary":"Launcher status exposes memory curation needs.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
 EOF
+cat > "$REPO/.kimiflow/project/RUN-HISTORY.json" <<'EOF'
+{"schema_version":1,"status":"written","hits":[]}
+EOF
+cat > "$REPO/.kimiflow/project/MEMORY-USAGE.json" <<'EOF'
+{"schema_version":1,"updated_at":"2026-06-25T00:00:00Z","items":{"learning:learn_memory":{"kind":"learning","use_count":2,"last_used_at":"2026-06-25T00:00:00Z"}}}
+EOF
+cat > "$REPO/.kimiflow/project/VAULT-PROVIDER.json" <<'EOF'
+{"schema_version":1,"type":"obsidian","available":true,"mode":"local-first","vault_path":"","last_prefetch_at":"2026-06-25T00:00:00Z","last_write_at":null,"updated_at":"2026-06-25T00:00:00Z"}
+EOF
 out="$(run_status)"
 assert_jq "$out" '.memory.present == true and .memory.learnings.current == 1 and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_status_reports_index_missing_curation"
+assert_jq "$out" '.memory.history.present == true and .memory.usage.total_uses == 2 and .memory.provider.available == true and .memory.vault.available == true' "launcher_surfaces_history_usage_provider"
 
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
 out="$(run_status)"
 assert_jq "$out" '.memory.curation.recommended == false and (.maintenance.reasons | index("memory_curation_recommended") | not)' "memory_index_clears_curation_recommendation"
+
+cat > "$REPO/.kimiflow/project/PROPOSALS.jsonl" <<'EOF'
+{"id":"learn_memory","learning_id":"learn_memory","type":"standard","kind":"project_rule_confirmed","target_path":".kimiflow/STANDARDS.md","summary":"Project rule confirmed: launcher status exposes pending learning proposals.","evidence":["hooks/launcher-status.sh:1"],"status":"pending","created_at":"2026-06-25T00:00:00Z","updated_at":"2026-06-25T00:00:00Z"}
+EOF
+out="$(run_status)"
+assert_jq "$out" '.memory.proposals.pending == 1 and (.maintenance.reasons | index("learning_proposals_pending"))' "pending_learning_proposals_surface_in_launcher"
+perl -0pi -e 's/"status":"pending"/"status":"approved"/' "$REPO/.kimiflow/project/PROPOSALS.jsonl"
+out="$(run_status)"
+assert_jq "$out" '.memory.proposals.approved == 1 and (.maintenance.reasons | index("learning_proposals_approved"))' "approved_learning_proposals_surface_in_launcher"
+rm "$REPO/.kimiflow/project/PROPOSALS.jsonl"
 
 awk 'BEGIN{for(i=0;i<950;i++) printf "word "}' > "$REPO/.kimiflow/project/MEMORY.md"
 out="$(run_status)"
