@@ -107,7 +107,7 @@ and why mechanical gates should stay few — and uncompromising — for the rest
 
 ---
 
-*KimiFlow is a public, user-invoked Claude Code skill + plugin: <https://github.com/swinxx/kimiflow>.
+*KimiFlow is a public, user-invoked Claude Code skill + plugin: <https://github.com/kimikonapps/kimiflow>.
 The gates described here are real and tested — see [`hooks/`](../hooks/), the
 [`examples/`](../examples/), and the "What gates are mechanical" section of the
 [README](../README.md).*

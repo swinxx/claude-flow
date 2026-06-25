@@ -633,6 +633,7 @@ files work without any API key, subscription, or MCP server.
   USER.jsonl         evidence-backed user/workflow preferences
   MEMORY-INDEX.json  cheap lookup/curation index
   MEMORY-USAGE.json  local use_count/last_used plus bounded recall/history cost events
+  MEMORY-ECONOMICS.jsonl run-level directional token-efficiency estimates
   RECALL.sqlite      optional local FTS5 recall index
   RECALL.md          last/project recall log, or run-local recall when written there
   RUN-HISTORY.json   last on-demand run/session history snapshot
@@ -646,6 +647,10 @@ files work without any API key, subscription, or MCP server.
   LEARNINGS.archive.jsonl non-active archived learning rows after consolidation
 
 .kimiflow/<slug>/
+  RECALL.json        machine-readable recall snapshot when RECALL.md is written
+  REVIEW.md          readable plan/code review summary, searched as local run history
+  CODE-REVIEW.md     Phase-7 code-review summary, searched and eligible for compact pitfall extraction
+  findings/*.md      canonical review-gate findings, searched locally but not promoted directly
   LEARNING-REVIEW.md required run-close artifact; recorded or explicitly skipped
 ```
 
@@ -681,7 +686,7 @@ memory-router.sh provider <status|health|setup|detect|connect|configure|prefetch
 **Retrieval order (token budget):**
 1. Always-on project/user memory (`MEMORY.md` + optional `USER.md`, bounded).
 2. Project map index and relevant facts/sections (`INDEX.json`, `FACTS.jsonl`, selected markdown).
-3. Local FTS5 recall (`RECALL.sqlite`) when available, plus `LEARNINGS.jsonl`/`USER.jsonl` and old-run fallback hits.
+3. Local FTS5 recall (`RECALL.sqlite`) when available, plus `LEARNINGS.jsonl`/`USER.jsonl` and old-run fallback hits, including local review summaries and canonical `findings/*.md`.
 4. On-demand run/session history via `history` or `recall`'s `sources.history` hits.
 5. Vault/claude-mem recall when connected and, for direct Vault access, direct MCP tools are ready.
 6. Current-state primary-source check when the Current-State Gate requires it.
@@ -724,14 +729,21 @@ non-current/local review material when an operator deliberately records it that 
 preferences stay local-only and are never repo-doc candidates. Project facts stay in `LEARNINGS.jsonl`.
 
 **Local run/session history:** `memory-router.sh history --query "<task>" --write` searches bounded old Kimiflow
-run artifacts and writes `RUN-HISTORY.json` plus `RUN-HISTORY.md`. `recall` also reports `sources.history` hits,
-so Phase 2 can reuse old plans/reviews without loading whole run folders.
+run artifacts, including `REVIEW.md`, `CODE-REVIEW.md`, `ADVISORIES.md`, and canonical `findings/*.md`, then writes
+`RUN-HISTORY.json` plus `RUN-HISTORY.md`. `recall` also reports `sources.history` hits, so Phase 2 can reuse old
+plans/reviews without loading whole run folders. Raw findings stay local search material; they are not promoted
+directly to repo docs or Vault.
 
-**Usage and lifecycle metrics:** persisted recall/history writes update `MEMORY-USAGE.json` with `use_count`,
-`last_used_at`, and a bounded event log for recall/history writes: hit count, approximate output-token cost, and
-the recalled keys. `memory-router.sh metrics` returns the compact economics summary. `curate --write` folds those
-metrics into `MEMORY-INDEX.json` and reports lifecycle data such as stale learning candidates, cold/unused current
-rows, and the configured `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window. `MEMORY.md` stays always-on but use-aware:
+**Usage, economics, and lifecycle metrics:** persisted recall/history writes update `MEMORY-USAGE.json` with
+`use_count`, `last_used_at`, and a bounded event log for recall/history writes: hit count, approximate output-token
+cost, and the recalled keys. A run-local `RECALL.json` is written beside `RECALL.md` so `review-run --write` can
+append one idempotent row to `MEMORY-ECONOMICS.jsonl`: always-on/user memory tokens, recall tokens, recall hits,
+used hits, estimated avoided scan tokens from used hits, net estimate, result (`unknown|saving|neutral|waste`), and confidence.
+This is directional telemetry, not billing truth; fewer than 8 runs report `insufficient_data`. `memory-router.sh
+metrics` keeps legacy usage economics at top-level `.economics` and returns run-economics at `.run_economics`.
+`curate --write` folds those metrics into
+`MEMORY-INDEX.json` and reports lifecycle data such as stale learning candidates, cold/unused current rows, and the
+configured `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window. `MEMORY.md` stays always-on but use-aware:
 it prefers frequently recalled, high-confidence, recent publish-safe learnings; cold rows stay searchable in
 `LEARNINGS.jsonl`/`RECALL.sqlite` instead of being forced into every prompt.
 

@@ -1,13 +1,13 @@
 {
   "name": "kimiflow",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "description": "Context-aware Kimiflow launcher, feature and bug-fix loop for Codex with mechanical quality gates, project intelligence maps, token-cheap memory/learning recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs.",
   "author": {
     "name": "kimikon",
-    "url": "https://github.com/swinxx"
+    "url": "https://github.com/kimikonapps"
   },
-  "homepage": "https://github.com/swinxx/kimiflow",
-  "repository": "https://github.com/swinxx/kimiflow",
+  "homepage": "https://github.com/kimikonapps/kimiflow",
+  "repository": "https://github.com/kimikonapps/kimiflow",
   "license": "MIT",
   "keywords": [
     "workflow",
@@ -34,9 +34,9 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/swinxx/kimiflow",
-    "privacyPolicyURL": "https://github.com/swinxx/kimiflow",
-    "termsOfServiceURL": "https://github.com/swinxx/kimiflow/blob/main/LICENSE",
+    "websiteURL": "https://github.com/kimikonapps/kimiflow",
+    "privacyPolicyURL": "https://github.com/kimikonapps/kimiflow",
+    "termsOfServiceURL": "https://github.com/kimikonapps/kimiflow/blob/main/LICENSE",
     "defaultPrompt": [
       "Open kimiflow and show project status",
       "Run kimiflow for this feature",

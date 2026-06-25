@@ -6,6 +6,25 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.37
+
+Ship **Memory Economics and searchable review findings** for the Kimiflow learning loop.
+
+### Added
+- `memory-router.sh recall --write` now writes a run-local `RECALL.json` beside `RECALL.md`.
+- `review-run --write` now records directional run-level token-efficiency telemetry in
+  `.kimiflow/project/MEMORY-ECONOMICS.jsonl`.
+- `status`, `metrics`, and `curate --write` now expose memory-economics summaries while preserving legacy
+  usage-economics fields.
+- Local run history and FTS recall now include review summaries and canonical `.kimiflow/<slug>/findings/*.md`
+  so Kimiflow can recall prior review findings after the gate closes.
+
+### Fixed
+- Token-savings estimates now use `used_hit_count` instead of all recall hits, avoiding inflated savings claims.
+- Generic `REVIEW.md` prose stays searchable local run history but is no longer promoted into durable
+  `LEARNINGS.jsonl` entries.
+- Docs and plugin metadata now point installs at the `kimikonapps/kimiflow` Git marketplace.
+
 ## 0.1.36
 
 Ship **frictionless Obsidian Vault MCP setup** for Codex and Claude Code.

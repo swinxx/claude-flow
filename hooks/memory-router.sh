@@ -235,10 +235,95 @@ usage_summary_json() {
 	          estimated_output_tokens: ([$events[]?.estimated_tokens // 0] | add // 0),
 	          last_event_at: ([$events[]?.at // empty] | sort | last // null)
 	        },
-	        hot_items: ($items | to_entries | map(select((.value.use_count // 0) > 1)) | length)
-	      }
-	  ' "$usage_file"
-	}
+		        hot_items: ($items | to_entries | map(select((.value.use_count // 0) > 1)) | length)
+		      }
+		  ' "$usage_file"
+}
+
+economics_summary_json() {
+  local economics_file="$1"
+  if [ ! -f "$economics_file" ]; then
+    jq -n --arg path ".kimiflow/project/MEMORY-ECONOMICS.jsonl" '{
+      present: false,
+      path: $path,
+      runs_tracked: 0,
+      confidence: "none",
+      verdict: "no_data",
+      action_required: false,
+      by_result: {},
+      totals: {
+        always_on_tokens: 0,
+        user_memory_tokens: 0,
+        recall_tokens: 0,
+        recall_hit_count: 0,
+        used_hit_count: 0,
+        estimated_avoided_scan_tokens: 0,
+        net_estimated_tokens_saved: 0
+      },
+      averages: {
+        net_estimated_tokens_saved_per_run: 0,
+        recall_hit_count_per_run: 0,
+        used_hit_count_per_run: 0
+      },
+      last_recorded_at: null,
+      note: "No run-level memory economics recorded yet."
+    }'
+    return 0
+  fi
+
+  jq -Rsc '
+    split("\n")
+    | map(select(length > 0) | (fromjson? // empty)) as $rows
+    | ($rows | length) as $n
+    | ([$rows[]?.net_estimated_tokens_saved // 0] | add // 0) as $net
+    | ([$rows[]?.recall_hit_count // 0] | add // 0) as $hits
+    | ([$rows[]?.used_hit_count // 0] | add // 0) as $used
+    | ([$rows[]?.estimated_avoided_scan_tokens // 0] | add // 0) as $avoided
+    | ([$rows[]?.always_on_tokens // 0] | add // 0) as $always
+    | ([$rows[]?.user_memory_tokens // 0] | add // 0) as $user
+    | ([$rows[]?.recall_tokens // 0] | add // 0) as $recall_tokens
+    | ($rows | map(select((.result // "") == "saving")) | length) as $saving
+    | ($rows | map(select((.result // "") == "waste")) | length) as $waste
+    | {
+        present: true,
+        path: ".kimiflow/project/MEMORY-ECONOMICS.jsonl",
+        runs_tracked: $n,
+        confidence: (if $n == 0 then "none" elif $n < 8 then "low" elif $n < 20 then "medium" else "high" end),
+        verdict: (
+          if $n == 0 then "no_data"
+          elif $n < 8 then "insufficient_data"
+          elif ($net > 0 and $saving >= $waste) then "saving_likely"
+          elif ($waste > $saving or $net < 0) then "waste_risk"
+          else "neutral"
+          end
+        ),
+        action_required: (if $n >= 8 and ($waste > $saving or $net < 0) then true else false end),
+        by_result: (reduce $rows[]? as $row ({}; ($row.result // "unknown") as $result | .[$result] = ((.[$result] // 0) + 1))),
+        totals: {
+          always_on_tokens: $always,
+          user_memory_tokens: $user,
+          recall_tokens: $recall_tokens,
+          recall_hit_count: $hits,
+          used_hit_count: $used,
+          estimated_avoided_scan_tokens: $avoided,
+          net_estimated_tokens_saved: $net
+        },
+        averages: {
+          net_estimated_tokens_saved_per_run: (if $n > 0 then (($net / $n) | floor) else 0 end),
+          recall_hit_count_per_run: (if $n > 0 then (($hits / $n) | floor) else 0 end),
+          used_hit_count_per_run: (if $n > 0 then (($used / $n) | floor) else 0 end)
+        },
+        last_recorded_at: ([$rows[]?.recorded_at // empty] | sort | last // null),
+        note: (
+          if $n < 8 then "Too few runs for a reliable savings claim; treat this as directional telemetry."
+          elif ($net > 0 and $saving >= $waste) then "Run telemetry suggests memory is likely saving tokens."
+          elif ($waste > $saving or $net < 0) then "Run telemetry suggests memory may cost more than it saves; review recall/always-on budget."
+          else "Run telemetry is roughly neutral."
+          end
+        )
+      }
+  ' "$economics_file"
+}
 
 learning_lifecycle_json() {
   local learnings="$1" usage_file="$2"
@@ -989,10 +1074,11 @@ status_json() {
   local recall_db="$project/RECALL.sqlite"
   local run_history="$project/RUN-HISTORY.json"
   local usage_file="$project/MEMORY-USAGE.json"
+  local economics_file="$project/MEMORY-ECONOMICS.jsonl"
   local provider_manifest="$project/VAULT-PROVIDER.json"
   local proposal_rows="$project/PROPOSALS.jsonl"
 
-  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json lifecycle_json provider_json provider_sync_json vault_json sqlite_available
+  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present economics_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json economics_json lifecycle_json provider_json provider_sync_json vault_json sqlite_available
   memory_tokens="$(word_count_file "$memory")"
   user_tokens="$(word_count_file "$user_memory")"
   memory_present=false; [ -f "$memory" ] && memory_present=true
@@ -1004,6 +1090,7 @@ status_json() {
   recall_db_present=false; [ -f "$recall_db" ] && recall_db_present=true
   run_history_present=false; [ -f "$run_history" ] && run_history_present=true
   usage_present=false; [ -f "$usage_file" ] && usage_present=true
+  economics_present=false; [ -f "$economics_file" ] && economics_present=true
   provider_present=false; [ -f "$provider_manifest" ] && provider_present=true
   proposal_rows_present=false; [ -f "$proposal_rows" ] && proposal_rows_present=true
   sqlite_available=false; command -v sqlite3 >/dev/null 2>&1 && sqlite_available=true
@@ -1011,6 +1098,7 @@ status_json() {
   user_json="$(read_jsonl_summary "$user_rows")"
   proposals_json="$(proposal_summary_json "$proposal_rows")"
   usage_json="$(usage_summary_json "$usage_file")"
+  economics_json="$(economics_summary_json "$economics_file")"
   lifecycle_json="$(learning_lifecycle_json "$learnings" "$usage_file")"
   provider_json="$(provider_status_json "$provider_manifest")"
   provider_sync_json="$(provider_sync_status_json "$root" "$learnings" "$provider_manifest")"
@@ -1028,6 +1116,7 @@ status_json() {
     --arg recall_db_path ".kimiflow/project/RECALL.sqlite" \
     --arg run_history_path ".kimiflow/project/RUN-HISTORY.json" \
     --arg usage_path ".kimiflow/project/MEMORY-USAGE.json" \
+    --arg economics_path ".kimiflow/project/MEMORY-ECONOMICS.jsonl" \
     --arg provider_path ".kimiflow/project/VAULT-PROVIDER.json" \
     --arg provider_sync_path ".kimiflow/project/VAULT-SYNC.md" \
     --argjson memory_present "$memory_present" \
@@ -1039,6 +1128,7 @@ status_json() {
     --argjson recall_db_present "$recall_db_present" \
     --argjson run_history_present "$run_history_present" \
     --argjson usage_present "$usage_present" \
+    --argjson economics_present "$economics_present" \
     --argjson provider_present "$provider_present" \
     --argjson proposal_rows_present "$proposal_rows_present" \
     --argjson sqlite_available "$sqlite_available" \
@@ -1050,6 +1140,7 @@ status_json() {
     --argjson user_profile "$user_json" \
     --argjson proposals "$proposals_json" \
     --argjson usage "$usage_json" \
+    --argjson economics "$economics_json" \
     --argjson lifecycle "$lifecycle_json" \
     --argjson provider "$provider_json" \
     --argjson provider_sync "$provider_sync_json" \
@@ -1068,13 +1159,14 @@ status_json() {
         if $provider_sync.pending_count > 0 then "provider_sync_pending" else empty end,
         if (($provider_sync.status == "provider_detected_unconfigured") and ($provider_sync.exportable_count > 0)) then "provider_detected_unconfigured" else empty end,
         if $provider.health.status == "auth_failed" then "provider_auth_failed" else empty end,
-        if (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0)) then "provider_auth_required" else empty end
+        if (($provider.health.status == "connected_local_only") and ($provider_sync.exportable_count > 0)) then "provider_auth_required" else empty end,
+        if $economics.action_required == true then "memory_economics_waste_risk" else empty end
       ]) as $all_reasons
       | ($all_reasons | map(select(. != "many_learnings"))) as $visible_reasons
       | ($all_reasons | map(select(. == "many_learnings"))) as $silent_reasons
       | {
       schema_version: 1,
-      present: ($memory_present or $learnings_present or $user_memory_present or $user_rows_present or $index_present or $recall_present or $recall_db_present or $run_history_present or $usage_present or $provider_present or $proposal_rows_present),
+      present: ($memory_present or $learnings_present or $user_memory_present or $user_rows_present or $index_present or $recall_present or $recall_db_present or $run_history_present or $usage_present or $economics_present or $provider_present or $proposal_rows_present),
       root: $root,
       paths: {
         memory: $memory_path,
@@ -1087,6 +1179,7 @@ status_json() {
         recall_index: $recall_db_path,
         run_history: $run_history_path,
         usage: $usage_path,
+        economics: $economics_path,
         provider: $provider_path,
         provider_sync: $provider_sync_path
       },
@@ -1109,6 +1202,7 @@ status_json() {
       learnings: ($learnings + {present: $learnings_present, path: $learnings_path}),
       lifecycle: $lifecycle,
       usage: ($usage + {present: $usage_present, path: $usage_path}),
+      economics: ($economics + {present: $economics_present, path: $economics_path}),
       proposals: $proposals,
       history: {
         present: $run_history_present,
@@ -1197,8 +1291,8 @@ run_artifact_rows_json() {
   while IFS= read -r file; do
     [ -n "$file" ] || continue
     rel="$(rel_path "$root" "$file")"
-    slug="$(basename "$(dirname "$file")")"
-    artifact="$(basename "$file")"
+    slug="$(printf '%s\n' "$rel" | awk -F/ '{print $2}')"
+    artifact="$(printf '%s\n' "$rel" | cut -d/ -f3-)"
     body="$(sed -n '1,180p' "$file")"
     summary="$(printf '%s\n' "$body" | awk '
       {
@@ -1229,7 +1323,7 @@ run_artifact_rows_json() {
         summary: $summary,
         text: $text
       }]')"
-  done < <(find "$root/.kimiflow" -path "$project" -prune -o -type f \( -name 'INTENT.md' -o -name 'PROBLEM.md' -o -name 'RESEARCH.md' -o -name 'DIAGNOSIS.md' -o -name 'PLAN.md' -o -name 'ACCEPTANCE.md' -o -name 'CODE-REVIEW.md' -o -name 'LEARNING-REVIEW.md' -o -name 'ADVISORIES.md' -o -name 'STATE.md' \) -print 2>/dev/null | sort)
+  done < <(find "$root/.kimiflow" -path "$project" -prune -o -type f \( -name 'INTENT.md' -o -name 'PROBLEM.md' -o -name 'RESEARCH.md' -o -name 'DIAGNOSIS.md' -o -name 'PLAN.md' -o -name 'ACCEPTANCE.md' -o -name 'REVIEW.md' -o -name 'CODE-REVIEW.md' -o -name 'LEARNING-REVIEW.md' -o -name 'ADVISORIES.md' -o -name 'STATE.md' -o -path '*/findings/*.md' \) -print 2>/dev/null | sort)
   printf '%s\n' "$out"
 }
 
@@ -1351,7 +1445,21 @@ write_recall_markdown() {
     printf -- '- Run history hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.history.count')"
     printf '\n## Omitted\n\n'
     printf '%s\n' "$json" | jq -r '.omitted[]? | "- " + .'
-  } > "$path"
+	  } > "$path"
+	}
+
+recall_json_path_for() {
+  local path="$1"
+  case "$path" in
+    *.md) printf '%s.json' "${path%".md"}" ;;
+    *) printf '%s.json' "$path" ;;
+  esac
+}
+
+write_recall_json() {
+  local path="$1" json="$2"
+  mkdir -p "$(dirname "$path")"
+  printf '%s\n' "$json" | jq . > "$path"
 }
 
 cmd_status() {
@@ -1520,6 +1628,7 @@ cmd_recall() {
       *) write_path="$root/$write_path" ;;
     esac
     write_recall_markdown "$write_path" "$json"
+    write_recall_json "$(recall_json_path_for "$write_path")" "$json"
     usage_hits="$(printf '%s\n' "$json" | jq '[.sources.learnings.hits[], .sources.index.hits[], .sources.history.hits[]]')"
     update_usage_metrics "$root" "$usage_hits" "recall"
   fi
@@ -1605,7 +1714,11 @@ cmd_metrics() {
   done
   need_jq
   root="$(resolve_root "$root")"
-  json_print "$(usage_summary_json "$root/.kimiflow/project/MEMORY-USAGE.json")" "$pretty"
+  local usage run_economics out
+  usage="$(usage_summary_json "$root/.kimiflow/project/MEMORY-USAGE.json")"
+  run_economics="$(economics_summary_json "$root/.kimiflow/project/MEMORY-ECONOMICS.jsonl")"
+  out="$(jq -n --argjson usage "$usage" --argjson run_economics "$run_economics" '$usage + {usage: $usage, run_economics: $run_economics}')"
+  json_print "$out" "$pretty"
 }
 
 classify_text() {
@@ -2096,9 +2209,10 @@ SQL
     while IFS= read -r file; do
       rel="$(rel_path "$root" "$file")"
       body="$(sed -n '1,180p' "$file")"
-      title="$(basename "$(dirname "$file")") · $(basename "$file")"
+      rel="$(rel_path "$root" "$file")"
+      title="$(printf '%s\n' "$rel" | awk -F/ '{print $2 " · " substr($0, length($1 "/" $2 "/") + 1)}')"
       insert_fts_row "$db" "run_artifact" "$rel" "$title" "$body" "$rel"
-    done < <(find "$root/.kimiflow" -path "$project" -prune -o -type f \( -name 'INTENT.md' -o -name 'PROBLEM.md' -o -name 'RESEARCH.md' -o -name 'DIAGNOSIS.md' -o -name 'PLAN.md' -o -name 'ACCEPTANCE.md' -o -name 'CODE-REVIEW.md' -o -name 'LEARNING-REVIEW.md' \) -print 2>/dev/null)
+    done < <(find "$root/.kimiflow" -path "$project" -prune -o -type f \( -name 'INTENT.md' -o -name 'PROBLEM.md' -o -name 'RESEARCH.md' -o -name 'DIAGNOSIS.md' -o -name 'PLAN.md' -o -name 'ACCEPTANCE.md' -o -name 'REVIEW.md' -o -name 'CODE-REVIEW.md' -o -name 'LEARNING-REVIEW.md' -o -name 'ADVISORIES.md' -o -path '*/findings/*.md' \) -print 2>/dev/null)
   fi
 }
 
@@ -2362,7 +2476,183 @@ write_bounded_user_memory() {
     [ "$words" -le "$budget" ] && break
     [ "$max_items" -le 2 ] && break
     max_items=$((max_items - 2))
+	  done
+	}
+
+run_artifact_corpus() {
+  local run_dir="$1"
+  local file
+  for file in RESEARCH.md DIAGNOSIS.md PLAN.md ACCEPTANCE.md REVIEW.md CODE-REVIEW.md VERIFICATION.md ADVISORIES.md; do
+    [ -f "$run_dir/$file" ] || continue
+    sed -n '1,220p' "$run_dir/$file"
+    printf '\n'
   done
+  if [ -d "$run_dir/findings" ]; then
+    while IFS= read -r file; do
+      [ -n "$file" ] || continue
+      sed -n '1,120p' "$file"
+      printf '\n'
+    done < <(find "$run_dir/findings" -type f -name '*.md' -print 2>/dev/null | sort)
+  fi
+}
+
+recall_hits_for_economics_json() {
+  local recall_json="$1"
+  if [ -f "$recall_json" ] && jq -e . "$recall_json" >/dev/null 2>&1; then
+    jq '
+      [
+        (.sources.learnings.hits[]? | . + {_economics_source: "learning"}),
+        (.sources.facts.hits[]? | . + {_economics_source: "fact"}),
+        (.sources.index.hits[]? | . + {_economics_source: "index"}),
+        (.sources.history.hits[]? | . + {_economics_source: "history"})
+      ]
+    ' "$recall_json"
+  else
+    jq -n '[]'
+  fi
+}
+
+economics_hits_tokens() {
+  local hits="$1"
+  printf '%s\n' "$hits" | jq '
+    [
+      .[]?
+      | ((.title // "") + " " + (.summary // "") + " " + (.body // "") + " " + (.text // ""))
+      | gsub("[^A-Za-z0-9_]+"; " ")
+      | split(" ")
+      | map(select(length > 0))
+      | length
+    ] | add // 0
+  '
+}
+
+economics_used_hits_count() {
+  local hits="$1" corpus="$2"
+  printf '%s\n' "$hits" | jq --arg corpus "$corpus" '
+    def needles:
+      [
+        (.id // ""),
+        (.ref // ""),
+        (.path // ""),
+        (.title // ""),
+        (((.evidence // []) | .[0]) // "")
+      ] | map(select(length > 0));
+    map(select((needles) as $needles | any($needles[]; . as $needle | ($corpus | contains($needle)))))
+    | length
+  '
+}
+
+run_economics_row_json() {
+  local root="$1" run_dir="$2"
+  local project run_rel memory user_memory recall_json hits corpus always_tokens user_tokens recall_tokens hit_count used_hits avoided_per_hit avoided net result confidence
+  project="$root/.kimiflow/project"
+  run_rel="$(rel_path "$root" "$run_dir")"
+  memory="$project/MEMORY.md"
+  user_memory="$project/USER.md"
+  recall_json="$run_dir/RECALL.json"
+  if [ -f "$recall_json" ] && jq -e . "$recall_json" >/dev/null 2>&1; then
+    always_tokens="$(jq -r '.sources.memory.tokens_estimate // 0' "$recall_json")"
+    user_tokens="$(jq -r '.sources.user_profile.tokens_estimate // 0' "$recall_json")"
+  else
+    always_tokens="$(word_count_file "$memory")"
+    user_tokens="$(word_count_file "$user_memory")"
+  fi
+  hits="$(recall_hits_for_economics_json "$recall_json")"
+  corpus="$(run_artifact_corpus "$run_dir")"
+  recall_tokens="$(economics_hits_tokens "$hits")"
+  hit_count="$(printf '%s\n' "$hits" | jq 'length')"
+  used_hits="$(economics_used_hits_count "$hits" "$corpus")"
+  avoided_per_hit="${KIMIFLOW_ECONOMICS_AVOIDED_TOKENS_PER_HIT:-1200}"
+  case "$avoided_per_hit" in ''|*[!0-9]*) avoided_per_hit=1200 ;; esac
+  avoided=$((used_hits * avoided_per_hit))
+  net=$((avoided - always_tokens - user_tokens - recall_tokens))
+  if [ "$hit_count" -eq 0 ]; then
+    result="unknown"
+  elif [ "$used_hits" -gt 0 ] && [ "$net" -gt 0 ]; then
+    result="saving"
+  elif [ "$net" -lt 0 ]; then
+    result="waste"
+  else
+    result="neutral"
+  fi
+  if [ "$hit_count" -eq 0 ]; then
+    confidence="none"
+  elif [ "$used_hits" -gt 0 ]; then
+    confidence="medium"
+  else
+    confidence="low"
+  fi
+
+  jq -n \
+    --arg run "$run_rel" \
+    --arg recorded_at "$(iso_now)" \
+    --arg recall_path "$(rel_path "$root" "$recall_json")" \
+    --arg result "$result" \
+    --arg confidence "$confidence" \
+    --arg heuristic "avoided_scan_tokens = used_hit_count * KIMIFLOW_ECONOMICS_AVOIDED_TOKENS_PER_HIT (default 1200); directional only" \
+    --argjson always "$always_tokens" \
+    --argjson user "$user_tokens" \
+    --argjson recall "$recall_tokens" \
+    --argjson hit_count "$hit_count" \
+    --argjson used "$used_hits" \
+    --argjson avoided "$avoided" \
+    --argjson net "$net" \
+    '{
+      schema_version: 1,
+      run: $run,
+      recorded_at: $recorded_at,
+      always_on_tokens: $always,
+      user_memory_tokens: $user,
+      recall_tokens: $recall,
+      recall_hit_count: $hit_count,
+      used_hit_count: $used,
+      estimated_avoided_scan_tokens: $avoided,
+      net_estimated_tokens_saved: $net,
+      result: $result,
+      confidence: $confidence,
+      basis: {
+        recall_json: $recall_path,
+        heuristic: $heuristic
+      }
+    }'
+}
+
+write_economics_row() {
+  local root="$1" row="$2"
+  local project file tmp
+  project="$root/.kimiflow/project"
+  file="$project/MEMORY-ECONOMICS.jsonl"
+  mkdir -p "$project"
+  tmp="$(mktemp "${file}.tmp.XXXXXX")"
+  if [ -f "$file" ]; then
+    jq -Rsc --argjson row "$row" '
+      split("\n")
+      | map(select(length > 0) | (fromjson? // empty))
+      | map(select((.run // "") != ($row.run // "")))
+      | . + [$row]
+      | .[]
+    ' "$file" > "$tmp"
+  else
+    printf '%s\n' "$row" | jq -c . > "$tmp"
+  fi
+  mv "$tmp" "$file"
+}
+
+record_run_economics_json() {
+  local root="$1" run_dir="$2" row summary
+  row="$(run_economics_row_json "$root" "$run_dir")"
+  write_economics_row "$root" "$row"
+  summary="$(economics_summary_json "$root/.kimiflow/project/MEMORY-ECONOMICS.jsonl")"
+  jq -n \
+    --arg path ".kimiflow/project/MEMORY-ECONOMICS.jsonl" \
+    --argjson row "$row" \
+    --argjson summary "$summary" \
+    '{
+      recorded: true,
+      path: $path,
+      row: $row,
+      summary: $summary
+    }'
 }
 
 write_learning_review_markdown() {
@@ -2408,23 +2698,26 @@ cmd_review_run() {
   done
   need_jq
   root="$(resolve_root "$root")"
-  local run_dir run_rel review candidate entries recorded count i entry kind scope topic summary evidence_json confidence sensitivity id out memory_updated proposal_update notification
+  local run_dir run_rel review candidate entries recorded count i entry kind scope topic summary evidence_json confidence sensitivity id out memory_updated proposal_update notification economics_update
   run_dir="$(resolve_run_dir "$root" "$run")"
   run_rel="$(rel_path "$root" "$run_dir")"
   review="$run_dir/LEARNING-REVIEW.md"
   memory_updated=false
   proposal_update='{}'
   notification='{}'
+  economics_update='{"recorded":false}'
 
   if [ -n "$skip_reason" ]; then
     if [ "$write" -eq 1 ]; then
       write_learning_review_markdown "$review" "$run_rel" "skipped" "[]" "$skip_reason"
+      economics_update="$(record_run_economics_json "$root" "$run_dir")"
     fi
     out="$(jq -n \
       --arg run "$run_rel" \
       --arg review_path "$(rel_path "$root" "$review")" \
       --arg reason "$skip_reason" \
       --argjson written "$write" \
+      --argjson economics_update "$economics_update" \
       '{
         schema_version: 1,
         status: "skipped",
@@ -2434,7 +2727,8 @@ cmd_review_run() {
         written: ($written == 1),
         entries: [],
         recorded_count: 0,
-        memory_updated: false
+        memory_updated: false,
+        economics: $economics_update
       }')"
     json_print "$out" "$pretty"
     return 0
@@ -2480,10 +2774,11 @@ cmd_review_run() {
     entries="$recorded"
     write_bounded_memory "$root"
     memory_updated=true
-    cmd_curate --root "$root" --write >/dev/null
-    cmd_index --root "$root" --write >/dev/null 2>&1 || true
-    proposal_update="$(cmd_propose --root "$root" --write)"
+	    cmd_curate --root "$root" --write >/dev/null
+	    cmd_index --root "$root" --write >/dev/null 2>&1 || true
+	    proposal_update="$(cmd_propose --root "$root" --write)"
     notification="$(printf '%s\n' "$proposal_update" | jq -c '.notification // {}')"
+    economics_update="$(record_run_economics_json "$root" "$run_dir")"
     write_learning_review_markdown "$review" "$run_rel" "recorded" "$entries" ""
   fi
 
@@ -2495,6 +2790,7 @@ cmd_review_run() {
     --argjson memory_updated "$memory_updated" \
     --argjson proposal_update "$proposal_update" \
     --argjson notification "$notification" \
+    --argjson economics_update "$economics_update" \
     '{
       schema_version: 1,
       status: (if $written == 1 then "recorded" else "preview" end),
@@ -2505,7 +2801,8 @@ cmd_review_run() {
       recorded_count: ($entries | map(select(.recorded_id != null)) | length),
       memory_updated: $memory_updated,
       proposal_update: $proposal_update,
-      notification: $notification
+      notification: $notification,
+      economics: $economics_update
     }')"
   json_print "$out" "$pretty"
 }
@@ -3138,18 +3435,20 @@ cmd_curate() {
   need_jq
   root="$(resolve_root "$root")"
 
-  local project memory learnings user_rows index usage_file provider_manifest status learning_summary user_summary usage_summary lifecycle provider vault existing_vault topics out
+  local project memory learnings user_rows index usage_file economics_file provider_manifest status learning_summary user_summary usage_summary economics_summary lifecycle provider vault existing_vault topics out
   project="$root/.kimiflow/project"
   memory="$project/MEMORY.md"
   learnings="$project/LEARNINGS.jsonl"
   user_rows="$project/USER.jsonl"
   index="$project/MEMORY-INDEX.json"
   usage_file="$project/MEMORY-USAGE.json"
+  economics_file="$project/MEMORY-ECONOMICS.jsonl"
   provider_manifest="$project/VAULT-PROVIDER.json"
   status="$(status_json "$root")"
   learning_summary="$(read_jsonl_summary "$learnings")"
   user_summary="$(read_jsonl_summary "$user_rows")"
   usage_summary="$(usage_summary_json "$usage_file")"
+  economics_summary="$(economics_summary_json "$economics_file")"
   lifecycle="$(learning_lifecycle_json "$learnings" "$usage_file")"
   provider="$(printf '%s\n' "$status" | jq -c '.provider')"
   vault="$(printf '%s\n' "$status" | jq -c '.vault')"
@@ -3175,6 +3474,7 @@ cmd_curate() {
     --argjson learnings "$learning_summary" \
     --argjson user_profile "$user_summary" \
     --argjson usage "$usage_summary" \
+    --argjson economics "$economics_summary" \
     --argjson lifecycle "$lifecycle" \
     --argjson provider "$provider" \
     --argjson vault "$existing_vault" \
@@ -3191,6 +3491,7 @@ cmd_curate() {
       learnings: $learnings,
       user_profile: $user_profile,
       usage: $usage,
+      economics: $economics,
       lifecycle: $lifecycle,
       topics: $topics,
       curation: $status.curation

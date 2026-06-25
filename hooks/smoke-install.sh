@@ -95,7 +95,7 @@ rm -rf "$tmp1" "$tmp2"
 
 echo "== MANUAL (needs a live Claude Code session — cannot be automated) =="
 cat <<'MANUAL'
-  [ ] /plugin marketplace add swinxx/kimiflow && /plugin install kimiflow@kimiflow → restart
+  [ ] /plugin marketplace add kimikonapps/kimiflow && /plugin install kimiflow@kimiflow → restart
   [ ] type "/kimiflow" → the command appears and fires (slash invocation works; cf. CC #26251)
   [ ] kimiflow launches when you ASK for it ("with kimiflow" / "run kimiflow") but does NOT fire unprompted on an unrelated request (opt-in policy is description-guided, not a hard flag; cf. CC #22345)
   [ ] in a repo with .kimiflow/, attempting `git add .` is blocked by the commit-secret-gate hook

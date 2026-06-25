@@ -30,7 +30,7 @@ reset_repo() {
   rm -rf "$REPO"
   mkdir -p "$REPO/src" "$REPO/hooks" "$REPO/.kimiflow/project"
   ( cd "$REPO" && git init -q && git config user.email "kimiflow@example.test" && git config user.name "kimiflow test" )
-  ( cd "$REPO" && git remote add origin https://github.com/swinxx/kimiflow.git )
+  ( cd "$REPO" && git remote add origin https://github.com/kimikonapps/kimiflow.git )
   printf '.kimiflow/\n' > "$REPO/.gitignore"
   printf 'one\n' > "$REPO/src/a.txt"
   printf '# launcher status fixture\n' > "$REPO/hooks/launcher-status.sh"
@@ -69,6 +69,7 @@ EOF
 out="$(run_router recall --query "release memory" --max 2 --write .kimiflow/project/RECALL.md)"
 assert_jq "$out" '.sources.memory.status == "included" and .sources.learnings.count >= 1 and .sources.facts.count >= 1' "recall_returns_relevant_hits"
 [ -f "$REPO/.kimiflow/project/RECALL.md" ] && pass "recall_writes_markdown" || fail "recall_writes_markdown"
+[ -f "$REPO/.kimiflow/project/RECALL.json" ] && pass "recall_writes_json_snapshot" || fail "recall_writes_json_snapshot"
 
 out="$("$SCRIPT" classify --text "Security finding: API token leaked through .env handling")"
 assert_jq "$out" '.classification.target == "project_memory" and .classification.sensitivity == "security" and .classification.vault_allowed == false and .classification.repo_doc_allowed == false' "classify_security_stays_local"
@@ -111,7 +112,7 @@ assert_jq "$(tail -n 1 "$REPO/.kimiflow/project/LEARNINGS.jsonl")" '(.evidence[0
 out="$(run_router curate --write)"
 assert_jq "$out" '.topics.memory | length >= 1' "curate_builds_topic_index"
 [ -f "$REPO/.kimiflow/project/MEMORY-INDEX.json" ] && pass "curate_writes_index" || fail "curate_writes_index"
-assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.schema_version == 1 and .repo_id == "github.com/swinxx/kimiflow" and .learnings.total >= 4 and .user_profile.total >= 1 and .usage.tracked_items >= 1 and .lifecycle.current >= 3 and .provider.type == "none"' "curate_index_shape"
+assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.schema_version == 1 and .repo_id == "github.com/kimikonapps/kimiflow" and .learnings.total >= 4 and .user_profile.total >= 1 and .usage.tracked_items >= 1 and .lifecycle.current >= 3 and .provider.type == "none"' "curate_index_shape"
 if command -v sqlite3 >/dev/null 2>&1; then
   [ -f "$REPO/.kimiflow/project/RECALL.sqlite" ] && pass "curate_writes_recall_sqlite" || fail "curate_writes_recall_sqlite"
 fi
@@ -131,20 +132,34 @@ EOF
 cat > "$REPO/.kimiflow/demo-run/CODE-REVIEW.md" <<'EOF'
 Pitfall: do not publish raw security findings into repo documentation.
 EOF
+mkdir -p "$REPO/.kimiflow/demo-run/findings"
+cat > "$REPO/.kimiflow/demo-run/findings/r1-B.md" <<'EOF'
+FINDING HIGH src/cache.ts:42 :: criticalcache sentinel proves review-gate findings stay searchable after the gate.
+EOF
+cat > "$REPO/.kimiflow/demo-run/REVIEW.md" <<'EOF'
+Pitfall: review summaries must not replace canonical findings files as the only searchable review source.
+EOF
 cat > "$REPO/.kimiflow/demo-run/PLAN.md" <<'EOF'
 Decision: keep Memory Router local-first and use Vault only as an optional provider.
 EOF
+printf '\nEvidence used: learn_release\n' >> "$REPO/.kimiflow/demo-run/PLAN.md"
 out="$(run_router history --query "optional provider" --write)"
 assert_jq "$out" '.status == "written" and (.hits | map(select(.artifact == "PLAN.md")) | length >= 1)' "history_searches_run_artifacts"
+out="$(run_router history --query "criticalcache" --write)"
+assert_jq "$out" '.status == "written" and (.hits | map(select(.slug == "demo-run" and .artifact == "findings/r1-B.md" and (.path | endswith("/findings/r1-B.md")))) | length == 1)' "history_searches_review_findings"
 [ -f "$REPO/.kimiflow/project/RUN-HISTORY.json" ] && [ -f "$REPO/.kimiflow/project/RUN-HISTORY.md" ] && pass "history_writes_snapshot" || fail "history_writes_snapshot"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-USAGE.json")" '.items | to_entries | map(select(.value.kind == "run_artifact")) | length >= 1' "history_write_records_usage"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-USAGE.json")" '.events | map(select(.kind == "history" and .hit_count >= 1 and .estimated_tokens >= 1)) | length >= 1' "history_write_records_usage_event"
+out="$(run_router recall --query "release optional provider" --max 10 --write .kimiflow/demo-run/RECALL.md)"
+assert_jq "$out" '.sources.learnings.count >= 1 and .sources.history.count >= 1' "run_recall_snapshot_has_economics_inputs"
 out="$(run_router recall --query "optional provider" --max 10 --write .kimiflow/project/RECALL.md)"
 assert_jq "$out" '.sources.history.count >= 1' "recall_includes_run_history_hits"
+out="$(run_router recall --query "criticalcache" --max 10)"
+assert_jq "$out" '.sources.history.hits | map(select(.artifact == "findings/r1-B.md")) | length == 1' "recall_includes_review_findings"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-USAGE.json")" '.items | to_entries | map(select(.value.kind == "run_artifact" and .value.use_count >= 1)) | length >= 1' "recall_write_updates_usage_metrics"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-USAGE.json")" '.events | map(select(.kind == "recall" and .hit_count >= 1 and (.keys | length >= 1))) | length >= 1' "recall_write_records_usage_event"
 out="$(run_router metrics)"
-assert_jq "$out" '.events_tracked >= 2 and .economics.recall_writes >= 1 and .economics.history_writes >= 1 and .economics.estimated_output_tokens >= 1 and (.by_event.recall.writes >= 1)' "metrics_reports_recall_history_economics"
+assert_jq "$out" '.events_tracked >= 2 and .economics.recall_writes >= 1 and .economics.history_writes >= 1 and .usage.events_tracked >= 2 and .usage.economics.recall_writes >= 1 and .usage.economics.history_writes >= 1 and .usage.economics.estimated_output_tokens >= 1 and (.usage.by_event.recall.writes >= 1)' "metrics_reports_recall_history_economics"
 
 out="$(run_router provider status)"
 assert_jq "$out" '.available == false and .type == "none"' "provider_status_defaults_local_only"
@@ -331,6 +346,8 @@ assert_jq "$out" '.provider.sync.pending_count == 0 and (.curation.reasons | ind
 out="$(run_router review-run --run .kimiflow/demo-run --write)"
 assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and .memory_updated == true' "review_run_records_four_questions"
 assert_jq "$out" '.notification.kind == "learning_proposals" and .proposal_update.proposals.pending >= 1' "review_run_reports_learning_notification"
+assert_jq "$out" '.economics.recorded == true and .economics.row.result == "saving" and .economics.row.recall_hit_count >= 1 and .economics.row.used_hit_count >= 1 and .economics.row.estimated_avoided_scan_tokens == (.economics.row.used_hit_count * 1200) and (.economics.row.basis.heuristic | contains("used_hit_count")) and .economics.summary.runs_tracked >= 1' "review_run_records_memory_economics"
+[ -f "$REPO/.kimiflow/project/MEMORY-ECONOMICS.jsonl" ] && pass "review_run_writes_memory_economics_file" || fail "review_run_writes_memory_economics_file"
 [ -f "$REPO/.kimiflow/demo-run/LEARNING-REVIEW.md" ] && pass "review_run_writes_review" || fail "review_run_writes_review"
 [ -f "$REPO/.kimiflow/project/MEMORY.md" ] && pass "review_run_writes_bounded_memory" || fail "review_run_writes_bounded_memory"
 assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(select(.evidence_fingerprints and (.evidence_fingerprints | length > 0 and all(.[]; .status == "current" and (.digest | length > 0) and (.digest_algorithm | length > 0))))) | length >= 4' "review_run_records_evidence_fingerprints"
@@ -338,6 +355,10 @@ out="$(run_router verify-run --run .kimiflow/demo-run)"
 printf '%s\n' "$out" | grep -q '^LEARNING_REVIEW	OPEN	status=recorded	freshness=current' && pass "verify_run_opens_recorded_review" || fail "verify_run_opens_recorded_review"
 assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(.kind) | index("learned") and index("project_rule_confirmed") and index("trap_or_pitfall") and index("important_decision")' "review_run_records_expected_kinds"
 assert_jq "$(cat "$REPO/.kimiflow/project/MEMORY-INDEX.json")" '.learnings.total >= 8 and (.topics.decisions | length >= 1)' "review_run_refreshes_index"
+out="$(run_router status)"
+assert_jq "$out" '.economics.present == true and .economics.runs_tracked >= 1 and .economics.verdict == "insufficient_data" and .economics.confidence == "low"' "status_reports_memory_economics"
+out="$(run_router metrics)"
+assert_jq "$out" '.usage.events_tracked >= 2 and .economics.recall_writes >= 1 and .run_economics.present == true and .run_economics.totals.net_estimated_tokens_saved > 0' "metrics_reports_memory_economics"
 before_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
 out="$(run_router review-run --run .kimiflow/demo-run --write)"
 after_count="$(wc -l < "$REPO/.kimiflow/project/LEARNINGS.jsonl" | tr -d '[:space:]')"
@@ -384,6 +405,28 @@ out="$(run_router review-run --run .kimiflow/structured-run --write)"
 assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and (.entries | all(.extraction_source == "structured"))' "review_run_prefers_structured_learning_summaries"
 assert_jq "$out" '(.entries[] | select(.question == "what_was_learned").summary | contains("structured learning summaries")) and (.entries[] | select(.question == "what_was_learned").evidence[0] | endswith(":7"))' "review_run_uses_structured_summary_evidence_line"
 
+mkdir -p "$REPO/.kimiflow/review-only-run"
+cat > "$REPO/.kimiflow/review-only-run/RESEARCH.md" <<'EOF'
+Learning: Review-only summaries stay available through local history without becoming durable memory.
+EOF
+cat > "$REPO/.kimiflow/review-only-run/ACCEPTANCE.md" <<'EOF'
+Project rule confirmed: Raw review summaries must remain searchable local artifacts unless they are explicitly curated.
+EOF
+cat > "$REPO/.kimiflow/review-only-run/PLAN.md" <<'EOF'
+Decision: Keep generic review prose out of durable project memory because review files can contain uncurated findings.
+EOF
+cat > "$REPO/.kimiflow/review-only-run/ADVISORIES.md" <<'EOF'
+Pitfall: Avoid promoting generic review prose into durable project memory.
+EOF
+cat > "$REPO/.kimiflow/review-only-run/REVIEW.md" <<'EOF'
+Human-readable round summary with reviewonlypitfall marker and no curated learning value.
+EOF
+out="$(run_router history --query "reviewonlypitfall" --write)"
+assert_jq "$out" '.hits | map(select(.artifact == "REVIEW.md")) | length == 1' "history_searches_review_summary"
+out="$(run_router review-run --run .kimiflow/review-only-run --write)"
+assert_jq "$out" '.status == "recorded" and (.entries | map(select(.evidence[0] | contains("REVIEW.md"))) | length == 0)' "review_run_does_not_promote_review_summary"
+assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(select((.summary // "") | contains("reviewonlypitfall"))) | length == 0' "review_summary_marker_stays_out_of_learnings"
+
 cat >> "$REPO/.kimiflow/demo-run/RESEARCH.md" <<'EOF'
 The evidence changed after the review, so the stored fingerprint must be refreshed.
 EOF
@@ -405,6 +448,8 @@ if command -v sqlite3 >/dev/null 2>&1; then
   assert_jq "$out" '.status == "indexed" and .documents > 0' "index_writes_fts_database"
   out="$(run_router recall --query "acceptance criterion maps" --max 10)"
   assert_jq "$out" '.sources.index.status == "used" and .sources.index.count > 0' "recall_uses_fts_index_when_available"
+  out="$(run_router recall --query "criticalcache" --max 10)"
+  assert_jq "$out" '.sources.index.status == "used" and (.sources.index.hits | map(select((.ref // "") | endswith("/findings/r1-B.md"))) | length == 1)' "recall_uses_fts_index_for_review_findings"
   out="$(run_router recall --query "definitely unmatched recalltoken" --max 10)"
   assert_jq "$out" '.sources.index.status == "available_no_hits" and .sources.index.count == 0' "recall_handles_fts_no_hits"
   run_router record --summary "Manual record refreshes recall index with indexsentinel marker after index exists." --topic index-refresh --kind process --confidence high --sensitivity normal --evidence hooks/launcher-status.sh:1 >/dev/null

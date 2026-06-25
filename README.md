@@ -27,12 +27,12 @@ Claude Code and Codex both cover a lot with native planning, subagents and hooks
 
 Inside Claude Code:
 ```
-/plugin marketplace add swinxx/kimiflow
+/plugin marketplace add kimikonapps/kimiflow
 /plugin install kimiflow@kimiflow
 ```
 …or from a terminal:
 ```bash
-claude plugin marketplace add swinxx/kimiflow
+claude plugin marketplace add kimikonapps/kimiflow
 claude plugin install kimiflow@kimiflow
 ```
 Then **restart Claude Code** (or open a new session) and run `/kimiflow`. This installs the skill **and** the safety hooks (`commit-secret-gate`, `state-gate`, `test-gate`). Update later with `claude plugin update kimiflow`.
@@ -42,7 +42,7 @@ Then **restart Claude Code** (or open a new session) and run `/kimiflow`. This i
 Recommended public install:
 
 ```bash
-codex plugin marketplace add swinxx/kimiflow
+codex plugin marketplace add kimikonapps/kimiflow
 bash "${CODEX_HOME:-$HOME/.codex}/.tmp/marketplaces/kimiflow/hooks/install-codex-hooks.sh"
 ```
 
@@ -70,14 +70,14 @@ codex plugin marketplace add .
 bash hooks/install-codex-hooks.sh
 ```
 
-Local path marketplaces show the newest local manifest in the plugin browser, but `codex plugin marketplace upgrade` only works for Git marketplaces. Use the Git marketplace (`swinxx/kimiflow`) for normal installs and repeatable CLI updates.
+Local path marketplaces show the newest local manifest in the plugin browser, but `codex plugin marketplace upgrade` only works for Git marketplaces. Use the Git marketplace (`kimikonapps/kimiflow`) for normal installs and repeatable CLI updates.
 
 The Codex port uses the same `.kimiflow/<slug>/` state, resolver scripts, commit-secret-gate, state-gate, and test-gate as the Claude Code plugin once the hook installer has run.
 
 ### Claude Code alternative — skill only (no hooks)
 
 ```bash
-git clone https://github.com/swinxx/kimiflow ~/.claude/skills/kimiflow
+git clone https://github.com/kimikonapps/kimiflow ~/.claude/skills/kimiflow
 ```
 Gives you `/kimiflow` (auto-discovered, no restart needed) — but **not** the hooks (`hooks.json` loads only via the plugin).
 
@@ -194,15 +194,18 @@ you explicitly ask for a sanitized public note.
 
 Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
-`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `MEMORY-ECONOMICS.jsonl`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
 `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`, and review-only `SKILL-DRAFTS/`; each completed run also gets a
-run-local `LEARNING-REVIEW.md`.
+run-local `LEARNING-REVIEW.md` plus a machine-readable `RECALL.json` when recall is written. Local review
+summaries and canonical `findings/*.md` are searchable through history/recall but stay local-only by default.
 `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time. Persisted recall/history writes are measured in
-`MEMORY-USAGE.json`; `memory-router.sh metrics` reports compact recall/history economics, and `MEMORY.md`
-prioritizes frequently used, high-confidence, recent publish-safe learnings instead of forcing every row into
-the prompt.
+`MEMORY-USAGE.json`; completed runs append cautious, directional token-efficiency estimates to
+`MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics` and run-economics at `.run_economics`. Fewer than
+8 recorded runs are reported as insufficient data, so Kimiflow does not pretend savings are proven too early.
+`MEMORY.md` prioritizes frequently used, high-confidence, recent publish-safe learnings instead of forcing every
+row into the prompt.
 
 This layer is local-first and optional-provider-aware. It works without a Vault MCP; `provider status`
 auto-detects a running Obsidian Local REST API on `https://127.0.0.1:27124` / `http://127.0.0.1:27123`, and
@@ -325,12 +328,12 @@ Claude Code und Codex decken mit nativer Planung, Subagents und Hooks schon viel
 
 In Claude Code:
 ```
-/plugin marketplace add swinxx/kimiflow
+/plugin marketplace add kimikonapps/kimiflow
 /plugin install kimiflow@kimiflow
 ```
 …oder im Terminal:
 ```bash
-claude plugin marketplace add swinxx/kimiflow
+claude plugin marketplace add kimikonapps/kimiflow
 claude plugin install kimiflow@kimiflow
 ```
 Dann **Claude Code neu starten** (oder neue Session) und `/kimiflow` aufrufen. Das installiert den Skill **und** die Sicherheits-Hooks (`commit-secret-gate`, `state-gate`, `test-gate`). Später aktualisieren mit `claude plugin update kimiflow`.
@@ -340,7 +343,7 @@ Dann **Claude Code neu starten** (oder neue Session) und `/kimiflow` aufrufen. D
 Empfohlene öffentliche Installation:
 
 ```bash
-codex plugin marketplace add swinxx/kimiflow
+codex plugin marketplace add kimikonapps/kimiflow
 bash "${CODEX_HOME:-$HOME/.codex}/.tmp/marketplaces/kimiflow/hooks/install-codex-hooks.sh"
 ```
 
@@ -368,14 +371,14 @@ codex plugin marketplace add .
 bash hooks/install-codex-hooks.sh
 ```
 
-Lokale Pfad-Marketplaces zeigen im Plugin-Browser das neueste lokale Manifest, aber `codex plugin marketplace upgrade` funktioniert nur für Git-Marketplaces. Für normale Installationen und wiederholbare CLI-Updates ist der Git-Marketplace (`swinxx/kimiflow`) der richtige Weg.
+Lokale Pfad-Marketplaces zeigen im Plugin-Browser das neueste lokale Manifest, aber `codex plugin marketplace upgrade` funktioniert nur für Git-Marketplaces. Für normale Installationen und wiederholbare CLI-Updates ist der Git-Marketplace (`kimikonapps/kimiflow`) der richtige Weg.
 
 Der Codex-Port nutzt dieselbe `.kimiflow/<slug>/`-State-Struktur, dieselben Resolver-Scripts, denselben commit-secret-gate, state-gate und test-gate wie das Claude-Code-Plugin, sobald der Hook-Installer gelaufen ist.
 
 ### Claude-Code-Alternative — nur Skill (ohne Hooks)
 
 ```bash
-git clone https://github.com/swinxx/kimiflow ~/.claude/skills/kimiflow
+git clone https://github.com/kimikonapps/kimiflow ~/.claude/skills/kimiflow
 ```
 Gibt dir `/kimiflow` (automatisch erkannt, kein Neustart nötig) — aber **nicht** die Hooks (`hooks.json` lädt nur über das Plugin).
 
@@ -493,14 +496,17 @@ außer du verlangst explizit eine sanitisierte öffentliche Notiz.
 
 Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
-`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
+`RUN-HISTORY.json`, `MEMORY-USAGE.json`, `MEMORY-ECONOMICS.jsonl`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
 `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl` und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich eine run-lokale
-`LEARNING-REVIEW.md`. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
+`LEARNING-REVIEW.md` sowie ein maschinenlesbares `RECALL.json`, wenn Recall geschrieben wird. Lokale Review-Zusammenfassungen
+und kanonische `findings/*.md` sind ueber History/Recall suchbar, bleiben aber standardmaessig lokal. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
 Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu klassifizieren, die
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
 oder den ganzen Vault zu lesen. Persistierte Recall-/History-Snapshots werden in `MEMORY-USAGE.json`
-gemessen; `memory-router.sh metrics` zeigt kompakte Recall-/History-Economics, und `MEMORY.md` priorisiert
-häufig genutzte, vertrauenswürdige, aktuelle publish-safe Learnings statt jede Zeile in den Prompt zu laden.
+gemessen; abgeschlossene Runs schreiben vorsichtige Token-Effizienz-Schaetzungen in `MEMORY-ECONOMICS.jsonl`;
+`memory-router.sh metrics` zeigt die bisherige Usage-Economics unter `.economics` und Run-Economics unter `.run_economics`. Unter 8 aufgezeichneten Runs meldet Kimiflow
+`insufficient_data`, damit keine falsche Sparbehauptung entsteht. `MEMORY.md` priorisiert häufig genutzte,
+vertrauenswürdige, aktuelle publish-safe Learnings statt jede Zeile in den Prompt zu laden.
 
 Diese Schicht ist local-first und funktioniert ohne Vault-MCP. `provider status` erkennt eine laufende
 Obsidian Local REST API auf `https://127.0.0.1:27124` / `http://127.0.0.1:27123`, und `provider connect`

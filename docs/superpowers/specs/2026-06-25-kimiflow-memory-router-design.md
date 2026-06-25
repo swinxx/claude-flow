@@ -160,7 +160,7 @@ Billiger Lookup-Index:
 {
   "schema_version": 1,
   "updated_at": "2026-06-25T00:00:00Z",
-  "repo_id": "github.com/swinxx/kimiflow",
+  "repo_id": "github.com/kimikonapps/kimiflow",
   "language": "de",
   "always_on_memory_tokens_estimate": 820,
   "vault": {
