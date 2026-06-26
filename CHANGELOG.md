@@ -6,6 +6,10 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 _No unreleased changes._
 
+## 0.1.40
+
+Ship **global local memory efficiency metrics**.
+
 ## 0.1.39
 
 Ship **Stabilize CI tests and keep maintainer notes local**.
