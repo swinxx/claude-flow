@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+# kimiflow — unit tests for plan-blocker-gate.sh.
+set -u
+
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/plan-blocker-gate.sh"
+WORK="$(mktemp -d)"
+RUN="$WORK/.kimiflow/demo"
+FAILS=0
+trap 'rm -rf "$WORK"' EXIT
+
+pass() { printf 'PASS: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
+field() { printf '%s' "$1" | cut -f"$2"; }
+assert_field() {
+  local out="$1" n="$2" want="$3" label="$4" got
+  got="$(field "$out" "$n")"
+  if [ "$got" = "$want" ]; then pass "$label"; else fail "$label (field $n='$got' want '$want')"; fi
+}
+assert_contains() {
+  local out="$1" want="$2" label="$3"
+  if printf '%s\n' "$out" | grep -qF "$want"; then pass "$label"; else fail "$label (missing '$want')"; fi
+}
+
+reset_run() {
+  rm -rf "$WORK"
+  mkdir -p "$RUN"
+  cat > "$RUN/STATE.md" <<'EOF'
+Status: active
+Mode: feature
+Scope: small
+Affected files: src/feature.ts, tests/feature.test.ts
+Phase 0: done
+Phase 1: done
+Phase 2: done
+Phase 3: done
+Phase 4: open
+EOF
+  cat > "$RUN/INTENT.md" <<'EOF'
+# Intent
+Build a small feature with observable output.
+EOF
+  cat > "$RUN/RESEARCH.md" <<'EOF'
+# Research
+Existing implementation lives in src/feature.ts:12 and tests in tests/feature.test.ts:4.
+EOF
+  cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- Update src/feature.ts for AC-1.
+- Add tests/feature.test.ts for AC-1.
+EOF
+  cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+- AC-1 -> feature_acceptance_test: Given input "x", the output is "done:x".
+EOF
+}
+
+run_gate() { "$SCRIPT" "$RUN"; }
+
+reset_run
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "clean_plan_opens"
+assert_contains "$out" "reason=clean" "clean_reason"
+
+reset_run
+cat > "$RUN/STATE.md" <<'EOF'
+- **Status:** active
+- **Mode:** feature
+- **Scope:** small
+- **Affected files:**
+  - src/feature.ts
+  - tests/feature.test.ts
+- **Phase 0:** done
+- **Phase 1:** done
+- **Phase 2:** done
+- **Phase 3:** done
+- **Phase 4:** open
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "markdown_state_affected_files_opens"
+
+reset_run
+cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+AC-1 -- When input "x" is processed, the system shall return "done:x".
+Example: "x" -> "done:x".
+Check: automated test feature_acceptance_test (exit 0) -> AC-1
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "multiline_acceptance_with_check_opens"
+
+reset_run
+printf '\n- TODO: choose the real implementation later.\n' >> "$RUN/PLAN.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "todo_plan_closes"
+assert_contains "$out" "plan_contains_unresolved_marker" "todo_detail"
+
+reset_run
+cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+- AC-1: The feature works.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "missing_acceptance_verification_closes"
+assert_contains "$out" "acceptance_missing_verification:AC-1" "missing_acceptance_verification_detail"
+
+reset_run
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- Implement the feature.
+- Update src/feature.ts for AC-10.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "missing_ac_plan_mapping_closes"
+assert_contains "$out" "acceptance_not_mapped_to_plan:AC-1" "missing_ac_plan_mapping_detail"
+
+reset_run
+cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+- AC-1: Given input "x", the output is "done:x".
+- AC-10 -> other_feature_test: Given input "y", the output is "done:y".
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "ac_token_match_does_not_confuse_ac1_with_ac10"
+assert_contains "$out" "acceptance_missing_verification:AC-1" "ac_token_missing_verification_detail"
+
+reset_run
+cat > "$RUN/RESEARCH.md" <<'EOF'
+# Research
+The codebase supports this feature.
+EOF
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- Implement AC-1.
+EOF
+cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+- AC-1 -> feature_acceptance_test: Given input "x", the output is "done:x".
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "missing_path_evidence_closes"
+assert_contains "$out" "no_code_or_artifact_path_evidence" "missing_path_evidence_detail"
+
+reset_run
+cat > "$RUN/RESEARCH.md" <<'EOF'
+# Research
+Stale implementation reference: src/stale.ts:1.
+EOF
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- Implement AC-1.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "research_only_path_evidence_does_not_open"
+assert_contains "$out" "no_code_or_artifact_path_evidence" "research_only_path_evidence_detail"
+
+reset_run
+grep -v '^Affected files:' "$RUN/STATE.md" > "$RUN/STATE.tmp" && mv "$RUN/STATE.tmp" "$RUN/STATE.md"
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- Update src/feature.ts for AC-1.
+- Files are affected by this plan.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "missing_affected_files_closes"
+assert_contains "$out" "affected_files_not_declared" "missing_affected_files_detail"
+
+reset_run
+grep -v '^Affected files:' "$RUN/STATE.md" > "$RUN/STATE.tmp" && mv "$RUN/STATE.tmp" "$RUN/STATE.md"
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+Affected files: src/feature.ts, tests/feature.test.ts
+- Update src/feature.ts for AC-1.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "plan_affected_files_with_paths_opens"
+
+reset_run
+grep -v '^Affected files:' "$RUN/STATE.md" > "$RUN/STATE.tmp" && mv "$RUN/STATE.tmp" "$RUN/STATE.md"
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- **Affected files:**
+  - src/feature.ts
+  - tests/feature.test.ts
+- Update src/feature.ts for AC-1.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "markdown_plan_affected_files_with_paths_opens"
+
+reset_run
+cat > "$RUN/PLAN.md" <<'EOF'
+# Plan
+- Update Dockerfile for AC-1.
+EOF
+cat > "$RUN/ACCEPTANCE.md" <<'EOF'
+# Acceptance
+- AC-1 -> dockerfile_smoke: Given the image build runs, Dockerfile builds successfully.
+EOF
+out="$(run_gate)"
+assert_field "$out" 2 OPEN "extensionless_project_file_path_opens"
+
+echo "----"
+if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

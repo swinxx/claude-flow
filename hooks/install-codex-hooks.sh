@@ -81,6 +81,7 @@ if [ "$CHECK_ONLY" -eq 1 ]; then
   check_wrapper kimiflow-commit-secret-gate.sh commit-secret-gate.sh
   check_wrapper kimiflow-state-gate.sh state-gate.sh
   check_wrapper kimiflow-test-gate.sh test-gate.sh
+  check_wrapper kimiflow-active-run.sh active-run.sh
   printf 'kimiflow Codex hooks installed in %s\n' "$HOOK_DIR"
   exit 0
 fi
@@ -88,6 +89,7 @@ fi
 write_wrapper kimiflow-commit-secret-gate.sh commit-secret-gate.sh
 write_wrapper kimiflow-state-gate.sh state-gate.sh
 write_wrapper kimiflow-test-gate.sh test-gate.sh
+write_wrapper kimiflow-active-run.sh active-run.sh
 
 if command -v codex >/dev/null 2>&1; then
   if codex features list 2>/dev/null | awk '$1 == "codex_hooks" && $3 == "true" { found=1 } END { exit found ? 0 : 1 }'; then

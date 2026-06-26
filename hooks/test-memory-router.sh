@@ -72,6 +72,7 @@ out="$(run_router recall --query "release memory" --max 2 --write .kimiflow/proj
 assert_jq "$out" '.sources.memory.status == "included" and .sources.learnings.count >= 1 and .sources.facts.count >= 1' "recall_returns_relevant_hits"
 [ -f "$REPO/.kimiflow/project/RECALL.md" ] && pass "recall_writes_markdown" || fail "recall_writes_markdown"
 [ -f "$REPO/.kimiflow/project/RECALL.json" ] && pass "recall_writes_json_snapshot" || fail "recall_writes_json_snapshot"
+assert_jq "$(cat "$REPO/.kimiflow/project/RECALL.json")" '(.explanation.reason_codes | index("always_on_included")) and (.explanation.reason_codes | index("local_recall_hits")) and .explanation.hit_counts.learnings >= 1 and .explanation.hit_counts.total >= 1' "recall_write_reports_memory_explanation"
 
 out="$("$SCRIPT" classify --text "Security finding: API token leaked through .env handling")"
 assert_jq "$out" '.classification.target == "project_memory" and .classification.sensitivity == "security" and .classification.vault_allowed == false and .classification.repo_doc_allowed == false' "classify_security_stays_local"
@@ -350,14 +351,21 @@ assert_jq "$out" '.status == "recorded" and .recorded_count == 4 and .memory_upd
 assert_jq "$out" '.notification.kind == "learning_proposals" and .proposal_update.proposals.pending >= 1' "review_run_reports_learning_notification"
 assert_jq "$out" '.economics.recorded == true and .economics.row.result == "saving" and .economics.row.recall_hit_count >= 1 and .economics.row.used_hit_count >= 1 and .economics.row.estimated_avoided_scan_tokens == (.economics.row.used_hit_count * 1200) and (.economics.row.basis.heuristic | contains("used_hit_count")) and .economics.summary.runs_tracked >= 1' "review_run_records_memory_economics"
 assert_jq "$out" '.economics.global.recorded == true and .economics.global.summary.runs_tracked >= 1 and .economics.global.summary.projects_tracked == 1 and .economics.global.summary.privacy.stores_content == false and .economics.global.summary.privacy.stores_paths == false and .economics.global.summary.estimated_savings_percent != null' "review_run_records_global_efficiency_stats"
-[ -f "$REPO/.kimiflow/project/MEMORY-ECONOMICS.jsonl" ] && pass "review_run_writes_memory_economics_file" || fail "review_run_writes_memory_economics_file"
-[ -f "$KIMIFLOW_HOME/metrics/token-economics.jsonl" ] && pass "review_run_writes_global_efficiency_file" || fail "review_run_writes_global_efficiency_file"
+assert_jq "$out" '.lifecycle.written == true and .lifecycle.status == "recorded" and .lifecycle.learning.recorded_count == 4 and .lifecycle.learning.memory_updated == true and .lifecycle.economics.result == "saving" and (.lifecycle.curation.reasons | type == "array") and .lifecycle.provider_sync.direct_write_ready == false and .lifecycle.external_writes.performed == false' "review_run_writes_lifecycle_summary"
+  [ -f "$REPO/.kimiflow/project/MEMORY-ECONOMICS.jsonl" ] && pass "review_run_writes_memory_economics_file" || fail "review_run_writes_memory_economics_file"
+  [ -f "$KIMIFLOW_HOME/metrics/token-economics.jsonl" ] && pass "review_run_writes_global_efficiency_file" || fail "review_run_writes_global_efficiency_file"
 if grep -q "$REPO\\|demo-run\\|kimikonapps/kimiflow" "$KIMIFLOW_HOME/metrics/token-economics.jsonl"; then
   fail "global_efficiency_stats_omit_paths_and_repo_names"
 else
   pass "global_efficiency_stats_omit_paths_and_repo_names"
 fi
 [ -f "$REPO/.kimiflow/demo-run/LEARNING-REVIEW.md" ] && pass "review_run_writes_review" || fail "review_run_writes_review"
+[ -f "$REPO/.kimiflow/demo-run/RUN-LIFECYCLE.json" ] && [ -f "$REPO/.kimiflow/demo-run/RUN-LIFECYCLE.md" ] && pass "review_run_writes_lifecycle_files" || fail "review_run_writes_lifecycle_files"
+if grep -q "Concrete credential\\|$WORK\\|test-token" "$REPO/.kimiflow/demo-run/RUN-LIFECYCLE.json" "$REPO/.kimiflow/demo-run/RUN-LIFECYCLE.md"; then
+  fail "memory_lifecycle_summaries_avoid_private_content"
+else
+  pass "memory_lifecycle_summaries_avoid_private_content"
+fi
 [ -f "$REPO/.kimiflow/project/MEMORY.md" ] && pass "review_run_writes_bounded_memory" || fail "review_run_writes_bounded_memory"
 assert_jq "$(jq -Rsc 'split("\n") | map(select(length > 0) | (fromjson? // empty))' "$REPO/.kimiflow/project/LEARNINGS.jsonl")" 'map(select(.evidence_fingerprints and (.evidence_fingerprints | length > 0 and all(.[]; .status == "current" and (.digest | length > 0) and (.digest_algorithm | length > 0))))) | length >= 4' "review_run_records_evidence_fingerprints"
 out="$(run_router verify-run --run .kimiflow/demo-run)"
@@ -614,6 +622,19 @@ out="$(run_router status)"
 assert_jq "$out" '.lifecycle.unused_current >= 1 and (.lifecycle.cold_candidate_ids | index("learn_cold_one"))' "status_reports_cold_learning_candidates"
 out="$(KIMIFLOW_OBSIDIAN_URL=http://127.0.0.1:1 KIMIFLOW_MEMORY_CURATE_AFTER_LEARNINGS=3 run_router status)"
 assert_jq "$out" '.curation.recommended == false and .curation.internal_recommended == true and (.curation.reasons | index("many_learnings") | not) and (.curation.silent_reasons | index("many_learnings")) and (.curation.all_reasons | index("many_learnings"))' "many_learnings_is_silent_when_memory_is_healthy"
+
+reset_repo
+cat > "$REPO/.kimiflow/project/LEARNINGS.jsonl" <<'EOF'
+{"id":"learn_hot","kind":"process","scope":"project","topic":"usefulness","summary":"Hot learning should be counted as useful.","evidence":["src/a.txt:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","status":"current"}
+{"id":"learn_warm","kind":"process","scope":"project","topic":"usefulness","summary":"Warm learning should be counted as recently useful.","evidence":["src/a.txt:1"],"confidence":"medium","sensitivity":"normal","last_verified":"2026-06-25","status":"current"}
+{"id":"learn_cold","kind":"process","scope":"project","topic":"usefulness","summary":"Cold learning should stay searchable without entering promote candidates.","evidence":["src/a.txt:1"],"confidence":"medium","sensitivity":"normal","last_verified":"2026-06-25","status":"current"}
+{"id":"learn_stale_current","kind":"process","scope":"project","topic":"usefulness","summary":"Stale current learning should never be promoted even when used.","evidence":["src/a.txt:1"],"confidence":"high","sensitivity":"normal","last_verified":"2025-01-01","status":"current"}
+EOF
+cat > "$REPO/.kimiflow/project/MEMORY-USAGE.json" <<'EOF'
+{"schema_version":1,"updated_at":"2026-06-25T00:00:00Z","items":{"learning:learn_hot":{"kind":"learning","use_count":2,"last_used_at":"2026-06-25T00:00:00Z"},"learning:learn_warm":{"kind":"learning","use_count":1,"last_used_at":"2026-06-25T00:00:00Z"},"learning:learn_stale_current":{"kind":"learning","use_count":3,"last_used_at":"2026-06-25T00:00:00Z"}}}
+EOF
+out="$(KIMIFLOW_LEARNING_STALE_AFTER_DAYS=30 run_router status)"
+assert_jq "$out" '.usefulness.hot.count == 1 and (.usefulness.hot.ids | index("learn_hot")) and .usefulness.warm.count == 1 and (.usefulness.warm.ids | index("learn_warm")) and .usefulness.cold.count == 1 and (.usefulness.cold.ids | index("learn_cold")) and .usefulness.stale.count == 1 and (.usefulness.stale.ids | index("learn_stale_current")) and (.usefulness.promote_candidates.ids | index("learn_hot")) and (.usefulness.promote_candidates.ids | index("learn_warm")) and (.usefulness.promote_candidates.ids | index("learn_stale_current") | not) and (.usefulness.compress_candidates.ids | index("learn_stale_current"))' "status_reports_learning_usefulness_tiers"
 
 mkdir -p "$REPO/.kimiflow/skip-run"
 out="$(run_router review-run --run .kimiflow/skip-run --write --skip "intentionally trivial run")"

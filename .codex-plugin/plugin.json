@@ -1,7 +1,7 @@
 {
   "name": "kimiflow",
   "version": "0.1.40",
-  "description": "Context-aware Kimiflow launcher, feature and bug-fix loop for Codex with mechanical quality gates, project intelligence maps, token-cheap memory/learning recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs.",
+  "description": "Context-aware Kimiflow launcher, active-session feature/fix loop for Codex with mechanical plan-blocker gates, code-review ensembles, existing-feature checks, project intelligence maps, token-cheap memory/learning recall, Obsidian Terminal MCP setup, health/auth status, and Vault sync handoffs.",
   "author": {
     "name": "kimikon",
     "url": "https://github.com/kimikonapps"
@@ -25,8 +25,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Understand a codebase, plan changes, and run feature/fix work through gates",
-    "longDescription": "Kimiflow opens with a context-aware launcher when invoked without a concrete task, then routes the user into project mapping, memory/recall curation, Obsidian auto-detect/connect, Terminal-based Obsidian MCP setup, Vault health/auth checks, Vault prefetch/sync handoffs, findings, backlog resume, feature work, bug fixes, improvement analysis, or docs. The Terminal wizard lets the user enter the Obsidian API key outside chat, writes host config, and keeps secrets out of .kimiflow/. It also runs a disciplined feature and bug-fix loop in Codex, and can build a local project intelligence map before coding. It maps the codebase, architecture, conventions, tests, flows, stale sections, docs, opt-in improvement/refactoring ideas, and bounded project memory under .kimiflow/project/. Normal coding runs use that map and memory recall to understand what already exists before planning, then continue through mechanical plan, verification, review, and commit gates.",
+    "shortDescription": "Understand a codebase, plan changes, check features, and run feature/fix work through gates",
+    "longDescription": "Kimiflow opens with a context-aware launcher when invoked without a concrete task, then routes the user into project mapping, memory/recall curation, Obsidian auto-detect/connect, Terminal-based Obsidian MCP setup, Vault health/auth checks, Vault prefetch/sync handoffs, findings, backlog resume, existing-feature checks, feature work, bug fixes, improvement analysis, or docs. A project-local active-session contract keeps follow-up requests inside the current Kimiflow run until it is finished, parked, failed, or aborted, with run-local item tracking and stale-state revalidation before finish. The Terminal wizard lets the user enter the Obsidian API key outside chat, writes host config, and keeps secrets out of .kimiflow/. It also runs a disciplined feature and bug-fix loop in Codex, and can build a local project intelligence map before coding. It maps the codebase, architecture, conventions, tests, flows, stale sections, docs, opt-in improvement/refactoring ideas, and bounded project memory under .kimiflow/project/. Normal coding runs use that map and memory recall to understand what already exists before planning, then continue through a mechanical plan-blocker gate, evidence-based verification, a focused code-review ensemble with orchestrator-verified findings, and the commit gate. Existing-feature checks review behavior, frontend/backend or command/API wiring, contracts, state/data, tests, and docs/security without editing code.",
     "developerName": "kimikon",
     "category": "Developer Tools",
     "capabilities": [
@@ -39,8 +39,11 @@
     "termsOfServiceURL": "https://github.com/kimikonapps/kimiflow/blob/main/LICENSE",
     "defaultPrompt": [
       "Open kimiflow and show project status",
+      "Continue the active kimiflow session",
       "Run kimiflow for this feature",
       "Use kimiflow --fix for this bug",
+      "Review this change with the kimiflow ensemble",
+      "Check an already-built feature with kimiflow",
       "Map and understand this codebase with kimiflow",
       "Refresh kimiflow project memory and recall",
       "Open Obsidian MCP Terminal setup with kimiflow",

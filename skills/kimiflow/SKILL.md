@@ -39,7 +39,10 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 - `/kimiflow` in user-facing text means `$kimiflow` or an explicit "run Kimiflow" prompt in Codex.
 - `/kimiflow`, `/kimiflow --launcher`, and `/kimiflow --menu` mean `$kimiflow`, `$kimiflow --launcher`, and `$kimiflow --menu` in Codex. Empty or vague explicit Kimiflow invocations open the context-aware launcher and must use `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh` for the status snapshot.
 - `/kimiflow --project-map <quick|standard|deep|skip>` means `$kimiflow --project-map <quick|standard|deep|skip>` in Codex. Missing maps, per-section staleness checks, `coverage`-based Phase-2 depth (`compressed|targeted|full`), recommended-but-skippable delta refreshes, focus selection, storage targets, and Improve/Docs publishing use the same canonical Project Map rules and `hooks/project-map-status.sh`. Repo docs are publish-safe derivatives only; raw `.kimiflow/project/` maps and sensitive findings stay local/private unless the user explicitly overrides that policy.
-- Kimiflow's Memory Router and Learning Loop use `$KIMIFLOW_PLUGIN_ROOT/hooks/memory-router.sh` in Codex. Launcher status exposes memory budget, learning counts, run-history/usage/economics/provider health, Obsidian auto-detection/auth status, pending provider sync handoffs, pending proposal notifications, Vault availability, and curation reasons; Phase 2 recall and Phase 7 learning use the same canonical rules as Claude Code, including current-only recall, bounded old-run history search over review summaries and canonical `findings/*.md`, run-local `RECALL.json`, use-count/last-used metrics, bounded recall/history cost events, run-level `MEMORY-ECONOMICS.jsonl`, `metrics`, lifecycle curation, optional Vault provider manifests, Obsidian `provider health|setup|detect|connect`, Terminal-wizard setup via `hooks/vault-mcp-open-terminal.sh`, MCP-backed direct search/write readiness, Vault prefetch/sync handoffs, superseded stale evidence rows, outside-repo evidence path sanitization, use-aware always-on memory, local FTS recall indexing, user-profile memory, consolidation, security scanning, and review-only rule/skill proposals with `--approve`, `--reject`, `--apply`, `PROPOSALS.jsonl`, and skill drafts under `.kimiflow/project/SKILL-DRAFTS/`.
+- `/kimiflow --verify-feature <feature-or-path>` means `$kimiflow --verify-feature <feature-or-path>` in Codex. Existing feature checks are review-only and use the canonical lens workflow from `reference.md`: small/fast read-only lens agents may collect candidate issues when available, but the Codex orchestrator must verify candidates before promoting them to findings.
+- Phase-7 code review uses the canonical Review Ensemble from `reference.md`: build one compact review packet, run focused `bug-regression`, `failure-security`, and when relevant `integration-contract` candidate lenses, then let the Codex orchestrator verify candidates before writing canonical `FINDING` lines to the gate. Raw `CANDIDATE` files never count as blockers until promoted.
+- Kimiflow's Active Session Contract uses `$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh` in Codex. Once a user explicitly starts Kimiflow and an active session exists, follow-up prompts remain inside that run unless the user explicitly exits, aborts, parks, fails, or switches workflow. Use `append-item`, `mark-built`, `mark-accepted`, `mark-rejected`, `drop-item`, `refresh-baseline`, and `finish|park|fail|abort --write` exactly as the canonical workflow describes; do not route follow-up changes to another skill while `.kimiflow/session/ACTIVE_RUN.json` is present.
+- Kimiflow's Memory Router and Learning Loop use `$KIMIFLOW_PLUGIN_ROOT/hooks/memory-router.sh` in Codex. Launcher status exposes memory budget, learning counts, feature-check findings, run-history/usage/economics/provider health, Obsidian auto-detection/auth status, pending provider sync handoffs, pending proposal notifications, Vault availability, and curation reasons; Phase 2 recall and Phase 7 learning use the same canonical rules as Claude Code, including current-only recall, bounded old-run history search over review summaries and canonical `findings/*.md`, run-local `RECALL.json`, use-count/last-used metrics, bounded recall/history cost events, run-level `MEMORY-ECONOMICS.jsonl`, `metrics`, lifecycle curation, optional Vault provider manifests, Obsidian `provider health|setup|detect|connect`, Terminal-wizard setup via `hooks/vault-mcp-open-terminal.sh`, MCP-backed direct search/write readiness, Vault prefetch/sync handoffs, superseded stale evidence rows, outside-repo evidence path sanitization, use-aware always-on memory, local FTS recall indexing, user-profile memory, consolidation, security scanning, and review-only rule/skill proposals with `--approve`, `--reject`, `--apply`, `PROPOSALS.jsonl`, and skill drafts under `.kimiflow/project/SKILL-DRAFTS/`.
 - `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}` means the installed Kimiflow plugin root. In Codex, use `KIMIFLOW_PLUGIN_ROOT`.
 - When invoking Kimiflow helper scripts from Codex, set `KIMIFLOW_HOST=codex`.
 - `TaskCreate` / `TaskUpdate` means use Codex's task plan/status updates.
@@ -55,10 +58,12 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
 Use the bundled scripts as the only mechanical source of truth:
 
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh`
+- `$KIMIFLOW_PLUGIN_ROOT/hooks/plan-blocker-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-build-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-verbosity.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/current-state-gate.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/launcher-status.sh`
+- `$KIMIFLOW_PLUGIN_ROOT/hooks/active-run.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/memory-router.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/test-weakening-scan.sh`
 - `$KIMIFLOW_PLUGIN_ROOT/hooks/secret-content-scan.sh`
@@ -66,7 +71,7 @@ Use the bundled scripts as the only mechanical source of truth:
 For Codex invocations, call them with `KIMIFLOW_HOST=codex`, for example:
 
 ```bash
-KIMIFLOW_HOST=codex "$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh" .kimiflow/<slug>/findings --round 1 --expect A,B
+KIMIFLOW_HOST=codex "$KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh" .kimiflow/<slug>/findings --round 1 --expect code-verified
 ```
 
 Do not replace these scripts with model judgment. If a resolver says the gate is closed, the gate is closed.

@@ -48,6 +48,24 @@ count_section_items() {
   ' "$file"
 }
 
+count_feature_check_findings() {
+  local root="$1"
+  local count=0 n file
+  [ -d "$root/.kimiflow" ] || { printf '0'; return 0; }
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    n="$(grep -E '^FINDING (BLOCKER|HIGH) ' "$file" 2>/dev/null | grep -c '' || true)"
+    count=$((count + n))
+  done < <(find "$root/.kimiflow" -mindepth 3 -maxdepth 3 -type f -path '*/findings/r*-feature-check.md' 2>/dev/null | sort)
+  printf '%s' "$count"
+}
+
+count_feature_check_runs() {
+  local root="$1"
+  [ -d "$root/.kimiflow" ] || { printf '0'; return 0; }
+  find "$root/.kimiflow" -mindepth 2 -maxdepth 2 -type f -name FEATURE-CHECK.md 2>/dev/null | wc -l | awk '{print $1 + 0}'
+}
+
 json_path_array_from_state() {
   local file="$1"
   local json='[]'
@@ -188,6 +206,7 @@ default_memory_status() {
     memory: {present: false, path: ".kimiflow/project/MEMORY.md", tokens_estimate: 0, budget: 900, over_budget: false},
     learnings: {present: false, path: ".kimiflow/project/LEARNINGS.jsonl", total: 0, current: 0, stale: 0, superseded: 0, archived: 0, private: 0, security: 0, by_topic: {}},
     lifecycle: {stale_after_days: 90, cutoff_date: null, current: 0, stale_candidates: 0, stale_candidate_ids: [], unused_current: 0, used_current: 0},
+    usefulness: {schema_version: 1, stale_after_days: 90, cutoff_date: null, hot: {count: 0, ids: []}, warm: {count: 0, ids: []}, cold: {count: 0, ids: []}, stale: {count: 0, ids: []}, promote_candidates: {count: 0, ids: []}, compress_candidates: {count: 0, ids: []}},
     usage: {present: false, path: ".kimiflow/project/MEMORY-USAGE.json", tracked_items: 0, total_uses: 0, last_used_at: null, by_kind: {}},
     economics: {present: false, path: ".kimiflow/project/MEMORY-ECONOMICS.jsonl", runs_tracked: 0, confidence: "none", verdict: "no_data", estimated_savings_percent: null, action_required: false},
     global_efficiency: {enabled: true, present: false, path: "~/.kimiflow/metrics/token-economics.jsonl", scope: "global_local_anonymous", runs_tracked: 0, projects_tracked: 0, confidence: "none", verdict: "no_data", estimated_savings_percent: null, action_required: false, privacy: {local_only: true, stores_content: false, stores_paths: false, stores_repo_name: false, stores_prompts: false, project_id_salted_hash: true}},
@@ -196,6 +215,58 @@ default_memory_status() {
     provider: {present: false, configured: false, path: ".kimiflow/project/VAULT-PROVIDER.json", type: "none", available: false, mode: "local-first", vault_path: "", last_prefetch_at: null, last_write_at: null, capabilities: {status: true, prefetch: false, sync: false, write: false, extract: false, search: false, write_review: false, direct_search: false, direct_write: false, mcp_direct_write: false, rest_api_authenticated: false, authenticated: false}, detection: {status: "unavailable", available: false, type: "obsidian", url: "", checked_urls: [], reason: "memory_router_unavailable", direct_write_requires_token: true, manifest: null}, auth: {required: true, status: "not_configured", authenticated: false, source: "none", token_env_present: false, token_source: null, token_stored: false, validated: false, probe_http_status: null, probe_allowed: false, probe_blocked_reason: null, url: "", setup_hint: "Memory router unavailable."}, health: {status: "not_detected", local_handoff_ready: false, direct_search_ready: false, direct_write_ready: false, rest_api_authenticated: false, mcp_tools_authenticated: false, review_required: true, recommended_action: "open_obsidian"}, sync: {path: ".kimiflow/project/VAULT-SYNC.md", available: false, pending_count: 0, pending_ids: [], exportable_count: 0, health_status: "not_detected", auth_status: "not_configured", direct_write_ready: false, status: "provider_unavailable"}},
     vault: {available: false, last_recall_at: null, last_write_at: null, provider: null},
     curation: {recommended: false, internal_recommended: true, reasons: [], silent_reasons: [], all_reasons: ["memory_router_unavailable"]}
+  }'
+}
+
+memory_summary_json() {
+  local memory="$1"
+  jq -nc --argjson memory "$memory" '{
+    present: ($memory.present == true),
+    tokens_estimate: ($memory.memory.tokens_estimate // 0),
+    budget: ($memory.memory.budget // 900),
+    over_budget: ($memory.memory.over_budget == true),
+    learnings: {
+      current: ($memory.learnings.current // 0),
+      stale: ($memory.learnings.stale // 0),
+      superseded: ($memory.learnings.superseded // 0)
+    },
+    usefulness: {
+      hot: ($memory.usefulness.hot.count // 0),
+      warm: ($memory.usefulness.warm.count // 0),
+      cold: ($memory.usefulness.cold.count // 0),
+      stale: ($memory.usefulness.stale.count // 0),
+      promote_candidates: ($memory.usefulness.promote_candidates.count // 0),
+      compress_candidates: ($memory.usefulness.compress_candidates.count // 0)
+    },
+    curation: {
+      recommended: ($memory.curation.recommended == true),
+      reasons: ($memory.curation.reasons // [])
+    },
+    provider_sync: {
+      status: ($memory.provider.sync.status // "unknown"),
+      pending_count: ($memory.provider.sync.pending_count // 0),
+      direct_write_ready: ($memory.provider.sync.direct_write_ready == true)
+    },
+    next_actions: (
+      (
+        ($memory.curation.reasons // [])
+        + [if (($memory.provider.sync.pending_count // 0) > 0) then "provider_sync_pending" else empty end]
+      ) | unique
+    )
+  }'
+}
+
+default_active_session_json() {
+  jq -nc '{
+    schema_version: 1,
+    present: false,
+    status: "none",
+    active_file: ".kimiflow/session/ACTIVE_RUN.json",
+    run: null,
+    item_counts: {total: 0, pending: 0, built: 0, accepted: 0, rejected: 0, dropped: 0, open: 0},
+    stale_risk: "none",
+    stale: {risk: "none", changed_paths: [], relevant_changed_paths: [], reason: "active_run_unavailable"},
+    terminal: true
   }'
 }
 
@@ -258,6 +329,8 @@ FINDINGS_PATH=".kimiflow/project/FINDINGS.md"
 IMPROVEMENTS_PATH=".kimiflow/project/IMPROVEMENTS.md"
 FINDINGS_OPEN="$(count_section_items "$ROOT/$FINDINGS_PATH" '^##[[:space:]]+(Offen|Open)([[:space:]].*)?$')"
 IMPROVEMENTS_OPEN="$(count_section_items "$ROOT/$IMPROVEMENTS_PATH" '^##[[:space:]]+(Priorisierte Slices|Prioritized Slices)([[:space:]].*)?$')"
+FEATURE_CHECK_FINDINGS_OPEN="$(count_feature_check_findings "$ROOT")"
+FEATURE_CHECK_RUNS="$(count_feature_check_runs "$ROOT")"
 
 REPO_DOCS_PRESENT=false
 if [ -d "$ROOT/docs" ] && find "$ROOT/docs" -maxdepth 2 -type f -name '*.md' -print -quit 2>/dev/null | grep -q .; then
@@ -380,10 +453,25 @@ if [ -x "$SCRIPT_DIR/memory-router.sh" ]; then
     MEMORY_JSON="$maybe_memory_json"
   fi
 fi
+MEMORY_SUMMARY_JSON="$(memory_summary_json "$MEMORY_JSON")"
+
+ACTIVE_SESSION_JSON="$(default_active_session_json)"
+if [ -x "$SCRIPT_DIR/active-run.sh" ]; then
+  maybe_active_session_json="$(KIMIFLOW_HOST="${KIMIFLOW_HOST:-}" "$SCRIPT_DIR/active-run.sh" status --root "$ROOT" 2>/dev/null || true)"
+  if printf '%s\n' "$maybe_active_session_json" | jq -e . >/dev/null 2>&1; then
+    ACTIVE_SESSION_JSON="$maybe_active_session_json"
+  fi
+fi
 
 MAINTENANCE_REASONS='[]'
 if [ "$DIRTY" = true ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "working_tree_dirty")"
+fi
+if printf '%s\n' "$ACTIVE_SESSION_JSON" | jq -e '.present == true and .terminal == false' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "active_session_open")"
+fi
+if printf '%s\n' "$ACTIVE_SESSION_JSON" | jq -e '.stale_risk == "needs_revalidation"' >/dev/null 2>&1; then
+  MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "active_session_needs_revalidation")"
 fi
 if [ "$MAP_PRESENT" != true ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "project_map_missing")"
@@ -422,12 +510,15 @@ out="$(jq -n \
   --arg map_status "$MAP_STATUS" \
   --arg findings_path "$FINDINGS_PATH" \
   --arg improvements_path "$IMPROVEMENTS_PATH" \
+  --arg feature_check_path_pattern ".kimiflow/*/FEATURE-CHECK.md" \
   --argjson repo_present "$REPO_PRESENT" \
   --argjson dirty "$DIRTY" \
   --argjson map_present "$MAP_PRESENT" \
   --argjson map_valid "$MAP_VALID" \
   --argjson findings_open "$FINDINGS_OPEN" \
   --argjson improvements_open "$IMPROVEMENTS_OPEN" \
+  --argjson feature_check_findings_open "$FEATURE_CHECK_FINDINGS_OPEN" \
+  --argjson feature_check_runs "$FEATURE_CHECK_RUNS" \
   --argjson docs_present "$REPO_DOCS_PRESENT" \
   --argjson active "$ACTIVE" \
   --argjson backlog "$BACKLOG" \
@@ -444,13 +535,18 @@ out="$(jq -n \
   --argjson maintenance_reasons "$MAINTENANCE_REASONS" \
   --argjson workflow_artifacts "$WORKFLOW_ARTIFACTS" \
   --argjson memory "$MEMORY_JSON" \
+  --argjson memory_summary "$MEMORY_SUMMARY_JSON" \
+  --argjson active_session "$ACTIVE_SESSION_JSON" \
   '{
     schema_version: 1,
     repo: {present: $repo_present, root: $root, head: $head, dirty: $dirty},
     project_map: {present: $map_present, valid: $map_valid, depth: $depth, status: $map_status, index: $index, baseline_commit: $baseline},
     memory: $memory,
+    memory_summary: $memory_summary,
     efficiency: ($memory.global_efficiency // {enabled: true, present: false, path: "~/.kimiflow/metrics/token-economics.jsonl", scope: "global_local_anonymous", runs_tracked: 0, projects_tracked: 0, confidence: "none", verdict: "no_data", estimated_savings_percent: null, action_required: false, privacy: {local_only: true, stores_content: false, stores_paths: false, stores_repo_name: false, stores_prompts: false, project_id_salted_hash: true}}),
+    active_session: $active_session,
     findings: {open: $findings_open, path: $findings_path},
+    feature_checks: {runs: $feature_check_runs, verified_findings_open: $feature_check_findings_open, path_pattern: $feature_check_path_pattern},
     improvements: {open: $improvements_open, path: $improvements_path},
     runs: {
       active: $active,

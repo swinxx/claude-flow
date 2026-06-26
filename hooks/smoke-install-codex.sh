@@ -25,9 +25,11 @@ jq -e '(.interface.defaultPrompt // []) | any(test("codebase|architecture|refact
   && ok "codex plugin Project Intelligence prompts visible" || bad "codex plugin Project Intelligence prompts missing"
 jq -e '((.interface.longDescription // "") + " " + (.interface.shortDescription // "") + " " + (.description // "")) | test("codebase|architecture|project intelligence")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
   && ok "codex plugin describes project intelligence" || bad "codex plugin description does not mention project intelligence"
+jq -e '((.interface.longDescription // "") + " " + (.description // "")) | test("code-review ensemble")' "$ROOT/.codex-plugin/plugin.json" >/dev/null 2>&1 \
+  && ok "codex plugin describes code-review ensemble" || bad "codex plugin description does not mention code-review ensemble"
 jq -e '.name == "kimiflow" and (.plugins[] | select(.name == "kimiflow" and .source.path == "./"))' "$ROOT/.agents/plugins/marketplace.json" >/dev/null 2>&1 \
   && ok "codex marketplace entry" || bad "codex marketplace entry"
-jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 3 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
+jq -e '[.hooks[]?[]?.hooks[]? | select(.type == "command")] | length == 5 and all(.[]; (.name // "" | length > 0) and (.description // "" | length > 0) and (.statusMessage // "" | length > 0))' "$ROOT/hooks.json" >/dev/null 2>&1 \
   && ok "codex plugin hooks are labelled" || bad "codex plugin hook labels missing"
 
 echo "== codex skill =="
@@ -41,18 +43,24 @@ printf '%s\n' "$fm" | grep -qi 'explicitly asks' && ok "opt-in guard present" ||
 grep -q 'KIMIFLOW_PLUGIN_ROOT/hooks/resolve-review-gate.sh' "$SKILL" && ok "skill uses absolute plugin-root helper paths" || bad "skill does not use plugin-root helper paths"
 if grep -q '\.\./\.\./hooks/' "$SKILL"; then bad "skill still documents cwd-sensitive ../../hooks paths"; else ok "skill avoids cwd-sensitive ../../hooks paths"; fi
 grep -q -- '--project-map <quick|standard|deep|skip>' "$SKILL" && ok "Codex wrapper maps project-map invocation" || bad "Codex wrapper missing project-map invocation mapping"
+grep -q -- '--verify-feature <feature-or-path>' "$ROOT/SKILL.md" && ok "canonical verify-feature argument present" || bad "canonical verify-feature argument missing"
+grep -q -- '--verify-feature <feature-or-path>' "$SKILL" && ok "Codex wrapper maps verify-feature invocation" || bad "Codex wrapper missing verify-feature invocation mapping"
 grep -q 'launcher-status.sh' "$SKILL" && ok "Codex wrapper maps launcher status helper" || bad "Codex wrapper missing launcher status helper"
 grep -q 'Launcher / menu' "$ROOT/SKILL.md" && ok "canonical Launcher mode present" || bad "canonical Launcher mode missing"
 grep -q 'Launcher mode' "$ROOT/reference.md" && ok "canonical Launcher mode documented" || bad "canonical Launcher mode docs missing"
 grep -q 'Resume safety check' "$ROOT/reference.md" && ok "resume safety check documented" || bad "resume safety check missing"
 if [ -x "$ROOT/hooks/launcher-status.sh" ] && bash -n "$ROOT/hooks/launcher-status.sh" 2>/dev/null; then ok "launcher status helper ok"; else bad "launcher status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-launcher-status.sh" ] && bash -n "$ROOT/hooks/test-launcher-status.sh" 2>/dev/null; then ok "launcher status test ok"; else bad "launcher status test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/active-run.sh" ] && bash -n "$ROOT/hooks/active-run.sh" 2>/dev/null; then ok "active session helper ok"; else bad "active session helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-active-run.sh" ] && bash -n "$ROOT/hooks/test-active-run.sh" 2>/dev/null; then ok "active session test ok"; else bad "active session test missing/not-exec/bad"; fi
 grep -q 'Project Map Bootstrap' "$ROOT/SKILL.md" && ok "canonical Project Map Bootstrap present" || bad "canonical Project Map Bootstrap missing"
 grep -q 'FACTS.jsonl' "$ROOT/reference.md" && ok "project map evidence artifact documented" || bad "project map evidence artifact missing"
 if [ -x "$ROOT/hooks/project-map-status.sh" ] && bash -n "$ROOT/hooks/project-map-status.sh" 2>/dev/null; then ok "project map status helper ok"; else bad "project map status helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-project-map-status.sh" ] && bash -n "$ROOT/hooks/test-project-map-status.sh" 2>/dev/null; then ok "project map status test ok"; else bad "project map status test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-state-gate.sh" 2>/dev/null; then ok "current-state gate helper ok"; else bad "current-state gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/memory-router.sh" ] && bash -n "$ROOT/hooks/memory-router.sh" 2>/dev/null; then ok "memory router helper ok"; else bad "memory router helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-memory-router.sh" ] && bash -n "$ROOT/hooks/test-memory-router.sh" 2>/dev/null; then ok "memory router test ok"; else bad "memory router test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/vault-mcp-setup.sh" ] && bash -n "$ROOT/hooks/vault-mcp-setup.sh" 2>/dev/null; then ok "vault MCP setup helper ok"; else bad "vault MCP setup helper missing/not-exec/bad"; fi
@@ -61,10 +69,20 @@ if [ -x "$ROOT/hooks/vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/vault
 if [ -x "$ROOT/hooks/test-vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/test-vault-mcp-open-terminal.sh" 2>/dev/null; then ok "vault MCP terminal test ok"; else bad "vault MCP terminal test missing/not-exec/bad"; fi
 grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "canonical project-map status helper documented" || bad "canonical project-map status helper missing"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
+grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "canonical plan-blocker gate helper documented" || bad "canonical plan-blocker gate helper missing"
 grep -q 'memory-router.sh' "$ROOT/reference.md" && ok "canonical memory router helper documented" || bad "canonical memory router helper missing"
+grep -q 'active-run.sh' "$ROOT/reference.md" && ok "canonical active session helper documented" || bad "canonical active session helper missing"
 grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
+grep -q 'plan-blocker-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-blocker gate helper" || bad "Codex wrapper missing plan-blocker gate helper"
 grep -q 'memory-router.sh' "$SKILL" && ok "Codex wrapper maps memory router helper" || bad "Codex wrapper missing memory router helper"
+grep -q 'active-run.sh' "$SKILL" && ok "Codex wrapper maps active session helper" || bad "Codex wrapper missing active session helper"
+grep -q 'Existing feature check' "$ROOT/reference.md" && ok "canonical existing feature check documented" || bad "canonical existing feature check missing"
 grep -q 'Memory Router & Learning Loop' "$ROOT/SKILL.md" && ok "canonical Memory Router present" || bad "canonical Memory Router missing"
+grep -q 'code-review ensemble' "$ROOT/SKILL.md" && ok "canonical code-review ensemble present" || bad "canonical code-review ensemble missing"
+grep -q 'Code-review ensemble' "$ROOT/reference.md" && ok "canonical code-review ensemble documented" || bad "canonical code-review ensemble docs missing"
+grep -q 'CANDIDATE <SEVERITY>' "$ROOT/reference.md" && ok "canonical review candidate format documented" || bad "canonical review candidate format missing"
+grep -q 'code-verified' "$ROOT/reference.md" && ok "canonical promoted code-review findings documented" || bad "canonical promoted code-review findings missing"
+grep -q 'Review Ensemble' "$SKILL" && ok "Codex wrapper maps code-review ensemble" || bad "Codex wrapper missing code-review ensemble mapping"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "per-section staleness documented" || bad "per-section staleness missing"
 grep -q 'phase2_depth' "$ROOT/reference.md" && ok "adaptive map coverage depth documented" || bad "adaptive map coverage depth missing"
 for term in MEMORY.md USER.md LEARNINGS.jsonl USER.jsonl MEMORY-INDEX.json MEMORY-USAGE.json RECALL.sqlite RECALL.md RUN-HISTORY.json VAULT-PROVIDER.json VAULT-PREFETCH.md VAULT-SYNC.md SKILL-DRAFTS PENDING-PROPOSALS.md PROPOSALS.jsonl LEARNING-REVIEW.md review-run verify-run 'history --query' metrics 'provider status' 'provider health' 'provider setup' 'provider detect' 'provider sync' 'vault-mcp-setup.sh' 'vault-mcp-open-terminal.sh' '--interactive' bearer_token_env_var headersHelper 'index --write' 'consolidate --write' 'propose --write' '--approve' '--reject' '--apply' evidence_fingerprints 'Learning quality gate' 'Source freshness gate' provider_sync_pending provider_detected_unconfigured provider_auth_required provider_auth_failed connected_local_only authenticated auth_failed; do
@@ -90,7 +108,7 @@ INSTALLER="$ROOT/hooks/install-codex-hooks.sh"
 if [ -x "$INSTALLER" ] && bash -n "$INSTALLER" 2>/dev/null; then ok "installer script ok: hooks/install-codex-hooks.sh"; else bad "installer script missing/not-exec/bad"; fi
 tmp_home="$(mktemp -d)"
 if CODEX_HOME="$tmp_home/codex" "$INSTALLER" >/dev/null 2>&1; then ok "installer writes wrappers into temp CODEX_HOME"; else bad "installer failed in temp CODEX_HOME"; fi
-for f in kimiflow-commit-secret-gate.sh kimiflow-state-gate.sh kimiflow-test-gate.sh; do
+for f in kimiflow-commit-secret-gate.sh kimiflow-state-gate.sh kimiflow-test-gate.sh kimiflow-active-run.sh; do
   wp="$tmp_home/codex/hooks/$f"
   if [ -x "$wp" ] && bash -n "$wp" 2>/dev/null && grep -q "KIMIFLOW_PLUGIN_ROOT=" "$wp"; then ok "wrapper ok: $f"; else bad "wrapper missing/bad: $f"; fi
 done
@@ -99,11 +117,14 @@ echo "== codex gate fires (synthetic payloads) =="
 COMMIT_HOOK="$tmp_home/codex/hooks/kimiflow-commit-secret-gate.sh"
 STATE_HOOK="$tmp_home/codex/hooks/kimiflow-state-gate.sh"
 TEST_HOOK="$tmp_home/codex/hooks/kimiflow-test-gate.sh"
+ACTIVE_HOOK="$tmp_home/codex/hooks/kimiflow-active-run.sh"
 
 deny_commit() { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$COMMIT_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
 deny_state()  { jq -nc --arg c "$1" --arg d "$2" '{tool_input:{args:{command:$c}}, cwd:$d, hook_event_name:"PreToolUse"}' | bash "$STATE_HOOK" 2>/dev/null | grep -q '"permissionDecision":"deny"'; }
 block_stop()  { jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
 allow_stop_active() { out="$(jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:true}, hook_event_name:"Stop"}' | bash "$TEST_HOOK" 2>/dev/null)"; [ -z "$out" ]; }
+active_prompt_context() { jq -nc --arg d "$1" '{cwd:$d, prompt:"follow-up text", hook_event_name:"UserPromptSubmit"}' | bash "$ACTIVE_HOOK" prompt-context 2>/dev/null | grep -q 'additionalContext'; }
+active_stop_blocks() { jq -nc --arg d "$1" '{cwd:$d, hook_input:{stop_hook_active:false}, hook_event_name:"Stop"}' | bash "$ACTIVE_HOOK" stop-gate 2>/dev/null | grep -qE '"decision"[[:space:]]*:[[:space:]]*"block"'; }
 
 tmp1="$(mktemp -d)"; ( cd "$tmp1" && git init -q && mkdir .kimiflow )
 tmp2="$(mktemp -d)"; ( cd "$tmp2" && git init -q )
@@ -114,6 +135,17 @@ if deny_state './hooks/resolve-review-gate.sh .kimiflow/nostate/findings --round
 printf 'false\n' > "$tmp1/.kimiflow/test-gate"
 if block_stop "$tmp1"; then ok "test-gate blocks red tests in Codex payload"; else bad "test-gate did not block red tests in Codex payload"; fi
 if allow_stop_active "$tmp1"; then ok "test-gate allows active stop continuation"; else bad "test-gate did not allow active stop continuation"; fi
+mkdir -p "$tmp1/.kimiflow/demo"
+cat > "$tmp1/.kimiflow/demo/STATE.md" <<'EOF'
+Status: active
+Affected files: README.md
+Phase 0: done
+Phase 5: in-progress
+EOF
+bash "$ACTIVE_HOOK" start --root "$tmp1" --run .kimiflow/demo --write >/dev/null
+bash "$ACTIVE_HOOK" append-item --root "$tmp1" --title "synthetic active-session item" --write >/dev/null
+if active_prompt_context "$tmp1"; then ok "active session hook injects Codex prompt context"; else bad "active session hook did not inject Codex prompt context"; fi
+if active_stop_blocks "$tmp1"; then ok "active session Stop hook blocks unfinished session"; else bad "active session Stop hook did not block unfinished session"; fi
 rm -rf "$tmp1" "$tmp2" "$tmp_home"
 
 echo "== MANUAL (needs Codex app/CLI plugin browser) =="
@@ -124,6 +156,7 @@ cat <<'MANUAL'
   [ ] Confirm Kimiflow launches only when explicitly requested.
   [ ] In a repo with .kimiflow/, attempting `git add .` is blocked by the installed stable Codex hook.
   [ ] With .kimiflow/test-gate containing a failing command, Codex Stop is blocked.
+  [ ] With an active Kimiflow session, a follow-up prompt keeps Kimiflow active and Stop asks for finish/park/fail/abort.
 MANUAL
 
 echo "----"

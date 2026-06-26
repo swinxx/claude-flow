@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "name": "Kimiflow active session",
+            "description": "Keeps follow-up prompts inside the current Kimiflow run while an active session contract exists.",
+            "type": "command",
+            "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/active-run.sh prompt-context",
+            "statusMessage": "Checking Kimiflow active session"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -30,6 +43,13 @@
             "type": "command",
             "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/test-gate.sh",
             "statusMessage": "Checking Kimiflow test gate"
+          },
+          {
+            "name": "Kimiflow active-session gate",
+            "description": "Blocks completion while a Kimiflow active session still has unresolved items or stale state.",
+            "type": "command",
+            "command": "KIMIFLOW_HOST=codex ${KIMIFLOW_PLUGIN_ROOT:-.}/hooks/active-run.sh stop-gate",
+            "statusMessage": "Checking Kimiflow active session"
           }
         ]
       }

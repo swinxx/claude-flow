@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# kimiflow — unit tests for active-run.sh.
+# Isolation: temp git repo under mktemp; the real repo is never touched.
+set -u
+
+SCRIPT="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
+WORK="$(mktemp -d)"
+REPO="$WORK/repo"
+FAKE_ROUTER="$WORK/fake-memory-router.sh"
+ROUTER_LOG="$WORK/router.log"
+trap 'rm -rf "$WORK"' EXIT
+
+FAILS=0
+pass() { printf 'PASS: %s\n' "$1"; }
+fail() { printf 'FAIL: %s\n' "$1"; FAILS=$((FAILS + 1)); }
+assert_jq() {
+  local json="$1" expr="$2" name="$3"
+  if printf '%s\n' "$json" | jq -e "$expr" >/dev/null 2>&1; then pass "$name"; else fail "$name"; fi
+}
+assert_empty() {
+  local value="$1" name="$2"
+  if [ -z "$value" ]; then pass "$name"; else fail "$name (got '$value')"; fi
+}
+assert_contains() {
+  local value="$1" needle="$2" name="$3"
+  if printf '%s\n' "$value" | grep -qF "$needle"; then pass "$name"; else fail "$name (missing '$needle')"; fi
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "SKIP: jq not installed — active-run uses jq"; exit 0
+fi
+
+cat > "$FAKE_ROUTER" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${KIMIFLOW_FAKE_ROUTER_LOG:?}"
+case "${1:-}" in
+  review-run)
+    root=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --root) shift; root="${1:-}" ;;
+      esac
+      shift || true
+    done
+    if [ "${KIMIFLOW_FAKE_REVIEW_WRITES:-0}" = "1" ] && [ -n "$root" ]; then
+      mkdir -p "$root/.kimiflow/project"
+      printf '{"written":true}\n' > "$root/.kimiflow/project/SENTINEL.json"
+      printf '{"written":true}\n' > "$root/.kimiflow/demo/LEARNING-REVIEW.md"
+    fi
+    printf '{"schema_version":1,"status":"recorded","written":true,"recorded_count":1}\n'
+    ;;
+  verify-run)
+    if [ "${KIMIFLOW_FAKE_VERIFY_FAIL:-0}" = "1" ]; then
+      printf 'LEARNING_REVIEW\tCLOSED\treason=synthetic_failure\tpath=.kimiflow/demo/LEARNING-REVIEW.md\n'
+      exit 1
+    fi
+    printf 'LEARNING_REVIEW\tOPEN\tstatus=recorded\tfreshness=current\tpath=.kimiflow/demo/LEARNING-REVIEW.md\n'
+    ;;
+  *)
+    printf 'fake-memory-router: unsupported command %s\n' "${1:-}" >&2
+    exit 2
+    ;;
+esac
+EOF
+chmod +x "$FAKE_ROUTER"
+
+reset_repo() {
+  rm -rf "$REPO"
+  : > "$ROUTER_LOG"
+  mkdir -p "$REPO/src" "$REPO/.kimiflow/demo"
+  ( cd "$REPO" && git init -q && git config user.email "kimiflow@example.test" && git config user.name "kimiflow test" )
+  printf '.kimiflow/\n' > "$REPO/.gitignore"
+  printf 'one\n' > "$REPO/src/a.txt"
+  cat > "$REPO/.kimiflow/demo/STATE.md" <<'EOF'
+Status: active
+Mode: feature
+Scope: small
+Affected files: src/a.txt
+Phase 0: done
+Phase 1: done
+Phase 2: done
+Phase 3: done
+Phase 4: done
+Phase 5: in-progress
+Phase 6: open
+Phase 7: open
+EOF
+  cat > "$REPO/.kimiflow/demo/RESEARCH.md" <<'EOF'
+Learning: active sessions should keep follow-up work inside Kimiflow.
+EOF
+  cat > "$REPO/.kimiflow/demo/ACCEPTANCE.md" <<'EOF'
+Project rule confirmed: every active session has explicit item status.
+EOF
+  cat > "$REPO/.kimiflow/demo/CODE-REVIEW.md" <<'EOF'
+Pitfall: stale plans must be revalidated before finish.
+EOF
+  cat > "$REPO/.kimiflow/demo/PLAN.md" <<'EOF'
+Decision: active session state stays in .kimiflow/session/ACTIVE_RUN.json.
+EOF
+  ( cd "$REPO" && git add .gitignore src/a.txt && git commit -q -m init )
+}
+
+run_active() {
+  KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" "$SCRIPT" "$@" --root "$REPO"
+}
+
+reset_repo
+out="$(run_active status)"
+assert_jq "$out" '.present == false and .status == "none"' "status_reports_no_active_session"
+out="$(run_active start --run .kimiflow/preview)"
+assert_jq "$out" '.present == false' "start_preview_does_not_activate_session"
+[ ! -d "$REPO/.kimiflow/preview" ] && pass "start_preview_does_not_create_run_dir" || fail "start_preview_does_not_create_run_dir"
+if run_active start --run "$WORK/outside" --write >/dev/null 2>&1; then
+  fail "start_rejects_outside_run_path"
+else
+  pass "start_rejects_outside_run_path"
+fi
+
+out="$(run_active start --run .kimiflow/demo --write)"
+assert_jq "$out" '.present == true and .run == ".kimiflow/demo" and .stale_risk == "current" and .item_counts.open == 0' "start_creates_active_session"
+[ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "start_writes_active_file" || fail "start_writes_active_file"
+
+out="$(run_active append-item --title "Add first button" --kind feature --write)"
+assert_jq "$out" '.item.id == "item_001" and .item_counts.open == 1' "append_item_creates_stable_id"
+out="$(run_active mark-built --id item_001 --write)"
+assert_jq "$out" '.item_status == "built" and .item_counts.built == 1' "mark_built_updates_item"
+out="$(run_active mark-accepted --id item_001 --write)"
+assert_jq "$out" '.item_status == "accepted" and .item_counts.accepted == 1 and .item_counts.open == 0' "mark_accepted_closes_item"
+
+out="$(run_active append-item --title "Add second button" --kind feature --write)"
+assert_jq "$out" '.item.id == "item_002"' "append_item_increments_id"
+out="$(run_active mark-rejected --id item_002 --reason "visual check failed" --write)"
+assert_jq "$out" '.item_status == "rejected" and .item_counts.rejected == 1 and .item_counts.open == 1' "mark_rejected_keeps_item_open"
+if run_active finish --write >/dev/null 2>&1; then
+  fail "finish_refuses_rejected_item"
+else
+  pass "finish_refuses_rejected_item"
+fi
+out="$(run_active drop-item --id item_002 --reason "out of scope for this run" --write)"
+assert_jq "$out" '.item_status == "dropped" and .item_counts.open == 0' "drop_item_clears_rejected_item"
+
+input='{"cwd":"'"$REPO"'","prompt":"secret prompt text should not be stored"}'
+out="$(printf '%s' "$input" | "$SCRIPT" prompt-context)"
+assert_jq "$out" '.hookSpecificOutput.hookEventName == "UserPromptSubmit" and (.hookSpecificOutput.additionalContext | contains("Kimiflow active session is open"))' "prompt_context_injects_active_session"
+if grep -R "secret prompt text should not be stored" "$REPO/.kimiflow" >/dev/null 2>&1; then
+  fail "prompt_context_does_not_store_prompt_text"
+else
+  pass "prompt_context_does_not_store_prompt_text"
+fi
+
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+assert_jq "$out" '.decision == "block" and (.reason | contains("active-session gate"))' "stop_gate_blocks_open_active_session"
+out="$(printf '{"cwd":"%s","stop_hook_active":true}' "$REPO" | "$SCRIPT" stop-gate)"
+assert_empty "$out" "stop_gate_loop_break_allows_continuation"
+
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
+out="$(run_active status)"
+assert_jq "$out" '.stale_risk == "needs_revalidation" and (.stale.relevant_changed_paths | index("src/a.txt"))' "status_reports_stale_relevant_change"
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("revalidate"))' "prompt_context_mentions_revalidation"
+if run_active finish --write >/dev/null 2>&1; then
+  fail "finish_refuses_stale_session"
+else
+  pass "finish_refuses_stale_session"
+fi
+out="$(run_active refresh-baseline --write)"
+assert_jq "$out" '.stale_risk == "current"' "refresh_baseline_clears_stale_risk"
+
+out="$(run_active finish --write)"
+assert_jq "$out" '.status == "finished" and .outcome.outcome == "done"' "finish_succeeds_after_acceptance_and_revalidation"
+[ ! -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "finish_clears_active_session" || fail "finish_clears_active_session"
+grep -q '^review-run ' "$ROUTER_LOG" && grep -q '^verify-run ' "$ROUTER_LOG" && pass "finish_calls_learning_review_and_verify" || fail "finish_calls_learning_review_and_verify"
+grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md" && pass "finish_marks_state_done" || fail "finish_marks_state_done"
+
+reset_repo
+cat > "$REPO/.kimiflow/demo/STATE.md" <<'EOF'
+- **Status:** active
+- **Mode:** feature
+- **Scope:** small
+- **Affected files:**
+  - src/a.txt
+- **Phase 0:** done
+- **Phase 1:** done
+- **Phase 2:** done
+- **Phase 3:** done
+- **Phase 4:** done
+- **Phase 5:** in-progress
+- **Phase 6:** open
+- **Phase 7:** open
+EOF
+run_active start --run .kimiflow/demo --write >/dev/null
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
+out="$(run_active status)"
+assert_jq "$out" '.affected_files == ["src/a.txt"] and .stale_risk == "needs_revalidation" and (.stale.relevant_changed_paths | index("src/a.txt"))' "markdown_affected_files_are_parsed"
+
+reset_repo
+grep -v '^Affected files:' "$REPO/.kimiflow/demo/STATE.md" > "$REPO/.kimiflow/demo/STATE.tmp" && mv "$REPO/.kimiflow/demo/STATE.tmp" "$REPO/.kimiflow/demo/STATE.md"
+run_active start --run .kimiflow/demo --write >/dev/null
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
+out="$(run_active status)"
+assert_jq "$out" '.affected_files == [] and .stale_risk == "unknown" and .stale.reason == "affected_paths_unknown" and (.stale.changed_paths | index("src/a.txt"))' "missing_affected_files_is_unknown_after_changes"
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+assert_jq "$out" '(.hookSpecificOutput.additionalContext | contains("revalidate"))' "prompt_context_mentions_revalidation_when_unknown"
+if run_active finish --write >/dev/null 2>&1; then
+  fail "finish_refuses_unknown_staleness"
+else
+  pass "finish_refuses_unknown_staleness"
+fi
+
+reset_repo
+mkdir -p "$REPO/.kimiflow/project"
+printf '{"existing":true}\n' > "$REPO/.kimiflow/project/EXISTING.json"
+run_active start --run .kimiflow/demo --write >/dev/null
+if KIMIFLOW_MEMORY_ROUTER="$FAKE_ROUTER" KIMIFLOW_FAKE_ROUTER_LOG="$ROUTER_LOG" KIMIFLOW_FAKE_REVIEW_WRITES=1 KIMIFLOW_FAKE_VERIFY_FAIL=1 "$SCRIPT" finish --root "$REPO" --write >/dev/null 2>&1; then
+  fail "finish_fails_when_learning_verify_fails"
+else
+  pass "finish_fails_when_learning_verify_fails"
+fi
+[ -f "$REPO/.kimiflow/session/ACTIVE_RUN.json" ] && pass "failed_finish_keeps_active_session" || fail "failed_finish_keeps_active_session"
+[ -f "$REPO/.kimiflow/project/EXISTING.json" ] && pass "failed_finish_restores_existing_project_memory" || fail "failed_finish_restores_existing_project_memory"
+[ ! -f "$REPO/.kimiflow/project/SENTINEL.json" ] && pass "failed_finish_rolls_back_review_memory_write" || fail "failed_finish_rolls_back_review_memory_write"
+[ ! -f "$REPO/.kimiflow/demo/LEARNING-REVIEW.md" ] && pass "failed_finish_rolls_back_run_learning_review" || fail "failed_finish_rolls_back_run_learning_review"
+if grep -q '^Status: done' "$REPO/.kimiflow/demo/STATE.md"; then
+  fail "failed_finish_does_not_mark_state_done"
+else
+  pass "failed_finish_does_not_mark_state_done"
+fi
+
+reset_repo
+run_active start --run .kimiflow/demo --write >/dev/null
+out="$(run_active park --reason "waiting for user validation" --write)"
+assert_jq "$out" '.status == "parked" and .outcome.learning_review.status == "not_promoted"' "park_clears_without_positive_learning"
+[ ! -s "$ROUTER_LOG" ] && pass "park_does_not_call_memory_router" || fail "park_does_not_call_memory_router"
+
+reset_repo
+run_active start --run .kimiflow/demo --write >/dev/null
+out="$(run_active fail --reason "verification failed" --write)"
+assert_jq "$out" '.status == "failed" and .outcome.learning_review.status == "not_promoted"' "fail_clears_without_positive_learning"
+[ ! -s "$ROUTER_LOG" ] && pass "fail_does_not_call_memory_router" || fail "fail_does_not_call_memory_router"
+
+reset_repo
+run_active start --run .kimiflow/demo --write >/dev/null
+out="$(run_active abort --reason "user switched workflow" --write)"
+assert_jq "$out" '.status == "aborted" and .outcome.learning_review.status == "not_promoted"' "abort_clears_without_positive_learning"
+[ ! -s "$ROUTER_LOG" ] && pass "abort_does_not_call_memory_router" || fail "abort_does_not_call_memory_router"
+
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" prompt-context)"
+assert_empty "$out" "prompt_context_noops_without_active_session"
+out="$(printf '{"cwd":"%s"}' "$REPO" | "$SCRIPT" stop-gate)"
+assert_empty "$out" "stop_gate_noops_without_active_session"
+
+echo "----"
+if [ "$FAILS" -eq 0 ]; then echo "ALL GREEN"; exit 0; else echo "$FAILS FAILED"; exit 1; fi

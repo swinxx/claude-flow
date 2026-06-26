@@ -9,13 +9,13 @@
 
 # kimiflow — Feature & Fix Loop (Claude Code + Codex skill/plugin)
 
-A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin that runs a disciplined **8-phase loop** for building features and fixing bugs — clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review → commit. Its gates are **mechanical, not advisory**: reviewers write structured findings to files, a tested **fail-closed** script counts the open blockers, and a "done" self-report can't talk its way past them.
+A **user-invoked** `/kimiflow` (Claude Code) / `$kimiflow` (Codex) skill+plugin that runs a disciplined **8-phase loop** for building features and fixing bugs — clarify → understand/diagnose → plan → plan-gate → implement → verify → code-review ensemble → commit. Its gates are **mechanical, not advisory**: reviewers write structured findings to files, a tested **fail-closed** script counts the open blockers, and a "done" self-report can't talk its way past them.
 
 > `SKILL.md` / `reference.md` are written in English. **kimiflow replies in the language you write in** — write in German and it grills/answers in German.
 
 ## Why this exists
 
-Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
+Claude Code and Codex both cover a lot with native planning, subagents and hooks — so why a skill? Because a prose instruction file *asks*; kimiflow *enforces*. The plan-gate and code-review gates are **tested, fail-closed resolver scripts** (`hooks/resolve-review-gate.sh`) that count open blockers mechanically — a verbose model can't argue past them. Phase 7 also uses a **review ensemble**: focused bug/regression, failure/security, and integration/contract lenses produce candidate findings, then the orchestrator verifies them before anything counts as a blocker. The secret-commit and test gates are real **PreToolUse/Stop hooks**, not reminders. And it travels: install once, identical gates in every repo, no per-project prompt drift. (kimiflow still reads project convention files such as `AGENTS.md` / `CLAUDE.md` as hints — it just never relies on them for a gate.)
 
 ## Install
 
@@ -101,11 +101,11 @@ The same gates on a **bug fix** — the other mode (full walkthrough: [`examples
 🟣 Phase 2  diagnose ······· reproduces the throw, proves the cause at auth/refresh.ts:88
             └─ no proven root cause ⇒ NO fix. (proven → continue)
 ⚫ Phase 3  plan ··········· fix + EARS acceptance criteria → PLAN.md
-🟡 Phase 4  PLAN-GATE ······ 2 independent reviewers → resolve-review-gate.sh
+🟡 Phase 4  PLAN-GATE ······ plan-blocker-gate.sh → independent reviewers → resolve-review-gate.sh
             └─ counts open BLOCKER/HIGH, fail-closed, cap 3 → 0 open ✅
 🟠 Phase 5  implement ······ failing test first (red) → fix → green
 🟤 Phase 6  verify ········· throw gone, suite green, checked against the criteria
-🟢 Phase 7  code-review ···· reviewers write findings → gate counts them (fail-closed)
+🟢 Phase 7  code-review ···· ensemble candidates → orchestrator verifies → gate counts confirmed findings
             └─ COMMIT-GATE: shows the diff, ✋ STOPS for your OK — never auto-commits
 ```
 
@@ -117,14 +117,15 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 
 | Gate | Phase | Mechanism | Fail-closed? |
 |------|-------|-----------|--------------|
+| **Plan-blocker gate** | 4 | `hooks/plan-blocker-gate.sh` blocks unresolved markers, unmapped acceptance criteria, missing verification, missing path evidence, and undeclared affected files before reviewers run | ✅ yes |
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts open `BLOCKER/HIGH` over reviewer findings; cap 3; blocker-aware anti-oscillation | ✅ yes |
-| **Code-review gate** | 7 | same resolver over the post-implementation findings | ✅ yes |
+| **Code-review gate** | 7 | focused review lenses produce candidates; the orchestrator verifies and promotes confirmed findings; the same resolver counts open `BLOCKER/HIGH` | ✅ yes |
 | **Commit-gate** | 7 | STOP + advisory triage; waits for your explicit OK before any commit | ✅ yes |
 | **Secret-commit hook** | any commit | `PreToolUse` hook — blocks staging secret-looking **paths** + bulk `git add -A`/`.` | ✅ yes |
 | **State-gate hook** | review gates | `PreToolUse` hook — blocks resolver calls without durable `.kimiflow/<slug>/STATE.md` | ✅ yes |
 | **Test-gate hook** (opt-in) | finish | `Stop` hook — blocks finishing while the project's tests are red | ✅ yes |
 
-What is **not** mechanical (model-judged, by design): the scope classification, the root-cause proof, the verification call, and — the honest limit — **whether the findings are complete**. The gate is mechanical *over the findings the reviewers wrote*; it can't prove they found everything. kimiflow makes the gate un-foolable, not the reviewer omniscient.
+What is **not** mechanical (model-judged, by design): the scope classification, the root-cause proof, the verification call, and — the honest limit — **whether the candidate lenses are complete**. The gate is mechanical *over confirmed findings*; it can't prove reviewers found everything. kimiflow makes the gate un-foolable, and the ensemble reduces blind spots without pretending to be omniscient.
 
 ## Usage
 
@@ -133,6 +134,7 @@ What is **not** mechanical (model-judged, by design): the scope classification, 
 /kimiflow <feature>          # build a feature
 /kimiflow <bug>              # fix a bug (auto-detected)
 /kimiflow --fix <bug>        # force fix mode
+/kimiflow --verify-feature <feature-or-path>  # review an already-built feature; no code edits
 /kimiflow <…> --prepare      # prepare only (through plan-gate), implement later
 /kimiflow --resume <slug>    # continue a prepared/interrupted run in a fresh session
 /kimiflow --project-map standard  # recommended, skippable project map bootstrap
@@ -144,9 +146,19 @@ In Codex, use the same arguments with `$kimiflow`:
 $kimiflow
 $kimiflow <feature>
 $kimiflow --fix <bug>
+$kimiflow --verify-feature <feature-or-path>
 $kimiflow --resume <slug>
 $kimiflow --project-map standard
 ```
+
+## Existing feature check
+
+Use `/kimiflow --verify-feature <feature-or-path>` when a feature already exists and you want to know whether it
+is really wired correctly. Kimiflow checks the behavior from multiple lenses: user-visible flow, frontend/backend
+or command/API wiring, contracts/types/config, state/data handling, tests, and docs/security where relevant. Small
+read-only lens agents may collect candidate issues, but the orchestrator must verify each candidate before it becomes
+a real finding. The mode writes `FEATURE-CHECK.md` and does not edit code; confirmed findings can be routed into a
+normal fix/improve run.
 
 ## Project structure
 
@@ -161,12 +173,22 @@ The repository is intentionally small and script-first:
 - `.kimiflow/` — local project intelligence, run state, memory, findings, and economics data. This directory is
   generated during local runs and is not meant to be committed by default.
 
+## Active session loop
+
+When you start Kimiflow for a real feature or fix, it creates a local active-session contract under
+`.kimiflow/session/ACTIVE_RUN.json`. Follow-up requests like "also add this button" or "that still does not work"
+stay inside the same Kimiflow run until the run is finished, parked, failed, or aborted.
+
+The run keeps a small item backlog in `.kimiflow/<slug>/ITEMS.jsonl`. Kimiflow will not finish while items are
+pending, only built, rejected, or stale after relevant files changed. Positive learnings are written only on a
+successful `finish`; parked, failed, or aborted runs do not promote unverified memory.
+
 ## Launcher
 
 If you invoke kimiflow without a concrete task (`/kimiflow` or `$kimiflow`), it opens a context-aware
 launcher. The launcher first runs `hooks/launcher-status.sh` and summarizes the current project state:
-project-map depth/status, memory/recall status, open findings, improvement slices, repo docs, dirty working
-tree, and active or backlog runs. It then routes your choice into the normal Kimiflow modes.
+active session status, project-map depth/status, memory/recall status, open findings, improvement slices, repo
+docs, dirty working tree, and active or backlog runs. It then routes your choice into the normal Kimiflow modes.
 
 Backlog/resume is guarded: a parked plan is not implemented blindly if affected files changed since its
 plan commit, or if the plan basis is unknown. In that case kimiflow offers plan revalidation before Phase 5.
@@ -209,12 +231,14 @@ Kimiflow also keeps a bounded local memory under `.kimiflow/project/`: `MEMORY.m
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
 `RUN-HISTORY.json`, `MEMORY-USAGE.json`, `MEMORY-ECONOMICS.jsonl`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
 `PENDING-PROPOSALS.md`, `PROPOSALS.jsonl`, and review-only `SKILL-DRAFTS/`; each completed run also gets a
-run-local `LEARNING-REVIEW.md` plus a machine-readable `RECALL.json` when recall is written. Local review
+run-local `LEARNING-REVIEW.md`, `RUN-LIFECYCLE.json`, `RUN-LIFECYCLE.md`, plus a machine-readable `RECALL.json`
+when recall is written. Local review
 summaries and canonical `findings/*.md` are searchable through history/recall but stay local-only by default.
 `hooks/memory-router.sh` gives the launcher and Phase 2 a cheap way to check memory freshness, recall relevant
 project facts, classify new learnings, write the required run-close learning review, and curate the index
 without rereading the whole repo or Vault every time. Persisted recall/history writes are measured in
-`MEMORY-USAGE.json`; completed runs append cautious, directional token-efficiency estimates to
+`MEMORY-USAGE.json`; `status` exposes compact hot/warm/cold/stale usefulness tiers, `recall --write` explains
+which sources were included or omitted, and completed runs append cautious, directional token-efficiency estimates to
 `MEMORY-ECONOMICS.jsonl`; `memory-router.sh metrics` reports legacy usage economics at `.economics`,
 run-economics at `.run_economics`, and a global local anonymous aggregate at `.global_efficiency`, normalizing
 older rows to the current `used_hit_count` heuristic. Fewer than 8 recorded runs are reported as insufficient
@@ -246,9 +270,9 @@ bounded `VAULT-SYNC.md` handoff with only current, non-private, non-security lea
 repo-relative evidence; it exports at most 20 candidates by default, records only exported IDs locally, and never
 writes external Vault notes blindly.
 Approve/apply revalidates evidence first, so stale proposals stay local until refreshed.
-The launcher surfaces memory budget, learning counts, run-history/usage/provider health, pending provider sync
-handoffs, pending proposal notifications, Vault availability, and only user-actionable curation reasons. Internal
-threshold hints such as `many_learnings` stay silent when memory is fresh and under budget.
+The launcher surfaces memory budget, learning counts, usefulness counts, run-history/usage/provider health, pending
+provider sync handoffs, pending proposal notifications, Vault availability, and only user-actionable curation reasons.
+Internal threshold hints such as `many_learnings` stay silent when memory is fresh and under budget.
 
 ## Example
 
@@ -258,7 +282,7 @@ threshold hints such as `many_learnings` stay silent when memory is fresh and un
 ```
 1. kimiflow asks 2–3 plain questions (e.g. "Apply immediately or after restart?") → `INTENT.md`, asks **"Does this match?"**
 2. understands the affected code (settings, theme) with `file:line` evidence, researches gaps → `RESEARCH.md`
-3. plan + acceptance criteria → plan-gate → build → verify → code-review
+3. plan + acceptance criteria → plan-gate → build → verify → code-review ensemble
 4. shows the diff and **waits for your OK before committing**
 
 **Bug fix:**
@@ -267,15 +291,15 @@ threshold hints such as `many_learnings` stay silent when memory is fresh and un
 ```
 1. clarifies the problem (symptom, reproduction) → `PROBLEM.md`
 2. **reproduces the crash**, **proves the cause** (`file:line`), **researches the correct fix** → `DIAGNOSIS.md`. Without a proven cause it does **not** fix.
-3. fixes → verifies the crash is gone + no regression → code-review → **stops before committing**
+3. fixes → verifies the crash is gone + no regression → code-review ensemble → **stops before committing**
 
 ## Flow (8 phases)
 
-Scope-gate (`trivial`/`small`/`large`) → **clarify** (plain-language grill / problem clarification) → **understand & research** resp. **diagnose** (reproduce + prove root cause + research the correct fix *before* fixing) → **plan** with testable EARS acceptance criteria → **plan-gate** (2 independent reviewers, binary no-blocker, cap 3) → **implement** (TDD, sequential by default) → **verify** against the criteria (with evidence) → **code-review** → **commit** (stops for your OK).
+Scope-gate (`trivial`/`small`/`large`) → **clarify** (plain-language grill / problem clarification) → **understand & research** resp. **diagnose** (reproduce + prove root cause + research the correct fix *before* fixing) → **plan** with testable EARS acceptance criteria → **plan-gate** (2 independent reviewers, binary no-blocker, cap 3) → **implement** (TDD, sequential by default) → **verify** against the criteria (with evidence) → **code-review ensemble** (focused candidate lenses + orchestrator verification) → **commit** (stops for your OK).
 
 State is persisted to `.kimiflow/<slug>/` in the target project (resumable).
 
-> **Cost:** a `large` run fans out several subagents (reviewers, implementer, verifier, and optional best-of-N / cross-family reviewer) — expect noticeably higher token use. The scope-gate keeps `small`/`trivial` lean (no loop, 0–1 reviewers).
+> **Cost:** a `large` run fans out several subagents (reviewers, implementer, verifier, and optional best-of-N / cross-family reviewer) — expect noticeably higher token use. The scope-gate keeps `trivial` lean, while non-trivial Phase 7 uses a bounded review ensemble over a compact diff packet to avoid repeated full re-reviews.
 
 ## Principles
 
@@ -419,11 +443,11 @@ Dieselben Gates an einem **Bug-Fix** — der andere Modus (vollständiger Walkth
 🟣 Phase 2  Diagnose ······· reproduziert den Throw, belegt die Ursache bei auth/refresh.ts:88
             └─ keine belegte Root-Cause ⇒ KEIN Fix. (belegt → weiter)
 ⚫ Phase 3  Plan ··········· Fix + EARS-Akzeptanzkriterien → PLAN.md
-🟡 Phase 4  PLAN-GATE ······ 2 unabhängige Reviewer → resolve-review-gate.sh
+🟡 Phase 4  PLAN-GATE ······ plan-blocker-gate.sh → unabhängige Reviewer → resolve-review-gate.sh
             └─ zählt offene BLOCKER/HIGH, fail-closed, Cap 3 → 0 offen ✅
 🟠 Phase 5  Umsetzung ······ erst der fehlschlagende Test (rot) → Fix → grün
 🟤 Phase 6  Verifikation ··· Throw weg, Suite grün, gegen die Kriterien geprüft
-🟢 Phase 7  Code-Review ···· Reviewer schreiben Findings → Gate zählt sie (fail-closed)
+🟢 Phase 7  Code-Review ···· Ensemble-Kandidaten → Orchestrator verifiziert → Gate zählt bestätigte Findings
             └─ COMMIT-GATE: zeigt den Diff, ✋ STOPPT für dein OK — committet nie selbst
 ```
 
@@ -435,14 +459,15 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 
 | Gate | Phase | Mechanismus | Fail-closed? |
 |------|-------|-------------|--------------|
+| **Planblocker-Gate** | 4 | `hooks/plan-blocker-gate.sh` blockt ungelöste Marker, nicht gemappte Akzeptanzkriterien, fehlende Verifikation, fehlende Pfad-Evidence und nicht deklarierte betroffene Dateien vor den Reviewern | ✅ ja |
 | **Plan-Gate** | 4 | `hooks/resolve-review-gate.sh` zählt offene `BLOCKER/HIGH` über die Reviewer-Findings; Cap 3; blocker-aware Anti-Oszillation | ✅ ja |
-| **Code-Review-Gate** | 7 | derselbe Resolver über die Findings nach der Umsetzung | ✅ ja |
+| **Code-Review-Gate** | 7 | fokussierte Review-Linsen liefern Kandidaten; der Orchestrator verifiziert und promotet bestätigte Findings; derselbe Resolver zählt offene `BLOCKER/HIGH` | ✅ ja |
 | **Commit-Gate** | 7 | STOP + Advisory-Triage; wartet auf dein explizites OK vor jedem Commit | ✅ ja |
 | **Secret-Commit-Hook** | jeder Commit | `PreToolUse`-Hook — blockt secret-verdächtige **Pfade** + Bulk-`git add -A`/`.` | ✅ ja |
 | **State-Gate-Hook** | Review-Gates | `PreToolUse`-Hook — blockt Resolver-Aufrufe ohne dauerhafte `.kimiflow/<slug>/STATE.md` | ✅ ja |
 | **Test-Gate-Hook** (opt-in) | Abschluss | `Stop`-Hook — blockt das Beenden, solange die Projekt-Tests rot sind | ✅ ja |
 
-**Nicht** mechanisch (modell-beurteilt, by design): die Scope-Einstufung, der Root-Cause-Beleg, die Verifikations-Entscheidung und — die ehrliche Grenze — **ob die Findings vollständig sind**. Das Gate ist mechanisch *über die Findings, die die Reviewer geschrieben haben*; es kann nicht beweisen, dass sie alles gefunden haben. kimiflow macht das Gate un-überredbar, nicht den Reviewer allwissend.
+**Nicht** mechanisch (modell-beurteilt, by design): die Scope-Einstufung, der Root-Cause-Beleg, die Verifikations-Entscheidung und — die ehrliche Grenze — **ob die Kandidaten-Linsen vollständig sind**. Das Gate ist mechanisch *über bestätigte Findings*; es kann nicht beweisen, dass Reviewer alles gefunden haben. kimiflow macht das Gate un-überredbar, und das Ensemble reduziert Blind Spots, ohne Allwissenheit zu behaupten.
 
 ## Nutzung
 
@@ -451,6 +476,7 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 /kimiflow <feature>          # Feature bauen
 /kimiflow <bug>              # Bug fixen (wird automatisch erkannt)
 /kimiflow --fix <bug>        # Fix-Modus erzwingen
+/kimiflow --verify-feature <feature-or-path>  # eingebautes Feature prüfen; keine Code-Edits
 /kimiflow <…> --prepare      # nur vorbereiten (bis Plan-Gate), später umsetzen
 /kimiflow --resume <slug>    # vorbereiteten/abgebrochenen Lauf in neuer Session fortsetzen
 /kimiflow --project-map standard  # empfohlene, überspringbare Projektkarte anlegen
@@ -462,9 +488,19 @@ In Codex nutzt du dieselben Argumente mit `$kimiflow`:
 $kimiflow
 $kimiflow <feature>
 $kimiflow --fix <bug>
+$kimiflow --verify-feature <feature-or-path>
 $kimiflow --resume <slug>
 $kimiflow --project-map standard
 ```
+
+## Eingebaute Features prüfen
+
+Nutze `/kimiflow --verify-feature <feature-or-path>`, wenn ein Feature schon gebaut ist und du wissen willst, ob es
+wirklich richtig verdrahtet ist. Kimiflow prüft es aus mehreren Perspektiven: sichtbares Verhalten, Frontend-/Backend-
+oder Command-/API-Verdrahtung, Contracts/Types/Config, State-/Datenfluss, Tests sowie Doku/Security, wenn relevant.
+Kleine read-only Prüflinsen dürfen Kandidaten sammeln; der Orchestrator muss jeden Kandidaten gezielt verifizieren,
+bevor daraus ein echtes Finding wird. Der Modus schreibt `FEATURE-CHECK.md` und editiert keinen Code; bestätigte
+Findings können danach in einen normalen Fix-/Improve-Run gehen.
 
 ## Projektstruktur
 
@@ -479,11 +515,22 @@ Das Repository ist bewusst klein und script-first aufgebaut:
 - `.kimiflow/` — lokale Projektintelligenz, Run-State, Memory, Findings und Economics-Daten. Dieser Ordner wird
   bei lokalen Runs erzeugt und standardmaessig nicht committed.
 
+## Aktive Session
+
+Wenn du Kimiflow fuer ein echtes Feature oder einen Fix startest, legt es lokal
+`.kimiflow/session/ACTIVE_RUN.json` an. Folgeauftraege wie "bau noch den Button ein" oder "das funktioniert noch
+nicht" bleiben im selben Kimiflow-Run, bis der Run abgeschlossen, geparkt, fehlgeschlagen oder abgebrochen ist.
+
+Der Run sammelt kleine Aenderungen in `.kimiflow/<slug>/ITEMS.jsonl`. Kimiflow beendet den Run nicht, solange
+Items pending, nur gebaut, rejected oder nach relevanten Datei-Aenderungen stale sind. Positive Learnings landen
+nur bei erfolgreichem `finish` im Memory; geparkte, fehlgeschlagene oder abgebrochene Runs schreiben keine
+ungeprueften positiven Learnings.
+
 ## Launcher
 
 Wenn du kimiflow ohne konkreten Auftrag startest (`/kimiflow` oder `$kimiflow`), öffnet es einen
 kontextbewussten Launcher. Der Launcher ruft zuerst `hooks/launcher-status.sh` auf und fasst den
-Projektzustand zusammen: Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
+Projektzustand zusammen: aktive Session, Projektkarten-Tiefe/-Status, Memory-/Recall-Status, offene Findings,
 Verbesserungs-Slices, Repo-Doku, dirty Working Tree und aktive oder geparkte Runs. Deine Auswahl wird danach
 in den normalen Kimiflow-Modus geroutet.
 
@@ -529,13 +576,14 @@ außer du verlangst explizit eine sanitisierte öffentliche Notiz.
 Kimiflow hält zusätzlich ein bounded lokales Gedächtnis unter `.kimiflow/project/`: `MEMORY.md`, `USER.md`,
 `LEARNINGS.jsonl`, `USER.jsonl`, `MEMORY-INDEX.json`, optional `RECALL.sqlite`, `RECALL.md`,
 `RUN-HISTORY.json`, `MEMORY-USAGE.json`, `MEMORY-ECONOMICS.jsonl`, `VAULT-PROVIDER.json`, `VAULT-PREFETCH.md`, `VAULT-SYNC.md`,
-`PENDING-PROPOSALS.md`, `PROPOSALS.jsonl` und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich eine run-lokale
-`LEARNING-REVIEW.md` sowie ein maschinenlesbares `RECALL.json`, wenn Recall geschrieben wird. Lokale Review-Zusammenfassungen
+`PENDING-PROPOSALS.md`, `PROPOSALS.jsonl` und reviewbare `SKILL-DRAFTS/`; jeder abgeschlossene Run bekommt zusätzlich run-lokale
+`LEARNING-REVIEW.md`, `RUN-LIFECYCLE.json`, `RUN-LIFECYCLE.md` sowie ein maschinenlesbares `RECALL.json`, wenn Recall geschrieben wird. Lokale Review-Zusammenfassungen
 und kanonische `findings/*.md` sind ueber History/Recall suchbar, bleiben aber standardmaessig lokal. `hooks/memory-router.sh` gibt Launcher und Phase 2 einen günstigen Weg,
 Memory-Freshness zu prüfen, relevante Projektfakten abzurufen, neue Learnings zu klassifizieren, die
 verpflichtende Run-Abschluss-Review zu schreiben und den Index zu kuratieren, ohne jedes Mal das ganze Repo
 oder den ganzen Vault zu lesen. Persistierte Recall-/History-Snapshots werden in `MEMORY-USAGE.json`
-gemessen; abgeschlossene Runs schreiben vorsichtige Token-Effizienz-Schaetzungen in `MEMORY-ECONOMICS.jsonl`;
+gemessen; `status` zeigt kompakte hot/warm/cold/stale Usefulness-Tiers, `recall --write` erklaert,
+welche Quellen geladen oder ausgelassen wurden, und abgeschlossene Runs schreiben vorsichtige Token-Effizienz-Schaetzungen in `MEMORY-ECONOMICS.jsonl`;
 `memory-router.sh metrics` zeigt die bisherige Usage-Economics unter `.economics`, Run-Economics unter `.run_economics`
 und ein globales lokales anonymes Aggregat unter `.global_efficiency`; aeltere Zeilen werden auf die aktuelle
 `used_hit_count`-Heuristik normalisiert. Unter 8 aufgezeichneten Runs meldet Kimiflow `insufficient_data`, damit
@@ -566,7 +614,7 @@ reviewbare Draft-Notizen statt automatische Skill-Patches. Provider-Sync schreib
 mit nur aktuellen, nicht-privaten, nicht-security Learnings mit frisch verifizierter repo-relativer Evidence,
 exportiert standardmäßig maximal 20 Kandidaten, merkt sich nur exportierte IDs lokal und schreibt niemals blind externe Vault-Notizen. Approve/apply prüft Evidence
 vorher erneut, stale Vorschläge bleiben lokal bis zum Refresh. Der Launcher zeigt Memory-Budget,
-Learning-Zählungen, Run-History-/Usage-/Provider-Health, pending Provider-Sync-Handoffs, pending Proposal
+Learning-Zählungen, Usefulness-Zählungen, Run-History-/Usage-/Provider-Health, pending Provider-Sync-Handoffs, pending Proposal
 Notifications, Vault-Verfügbarkeit und nur Kuratierungsgründe, bei denen der User wirklich handeln muss. Interne
 Schwellen wie `many_learnings` bleiben still, wenn Memory frisch und unter Budget ist.
 

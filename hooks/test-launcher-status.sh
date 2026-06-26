@@ -5,6 +5,7 @@ set -u
 
 SCRIPT="$(cd "$(dirname "$0")" && pwd)/launcher-status.sh"
 MEMORY_ROUTER="$(cd "$(dirname "$0")" && pwd)/memory-router.sh"
+ACTIVE_RUN="$(cd "$(dirname "$0")" && pwd)/active-run.sh"
 WORK="$(mktemp -d)"
 REPO="$WORK/repo"
 INDEX="$REPO/.kimiflow/project/INDEX.json"
@@ -143,6 +144,20 @@ EOF
 out="$(run_status)"
 assert_jq "$out" '.findings.open == 2 and .improvements.open == 1' "findings_and_improvements_counted_en"
 
+mkdir -p "$REPO/.kimiflow/feature-check-demo/findings"
+cat > "$REPO/.kimiflow/feature-check-demo/FEATURE-CHECK.md" <<'EOF'
+# Feature Check
+
+Verified finding exists.
+EOF
+cat > "$REPO/.kimiflow/feature-check-demo/findings/r1-feature-check.md" <<'EOF'
+FINDING HIGH src/a.txt:1 :: feature is not wired on the real path
+FINDING MEDIUM src/a.txt:1 :: docs could be clearer
+EOF
+out="$(run_status)"
+assert_jq "$out" '.feature_checks.runs == 1 and .feature_checks.verified_findings_open == 1 and (.maintenance.reasons | index("feature_check_findings") | not) and .maintenance.bring_current_recommended == false' "feature_check_findings_surface_without_maintenance_noise"
+rm -rf "$REPO/.kimiflow/feature-check-demo"
+
 cat > "$REPO/.kimiflow/project/MEMORY.md" <<'EOF'
 # Memory
 
@@ -150,6 +165,7 @@ Kimiflow loads small project memory before fresh code exploration.
 EOF
 cat > "$REPO/.kimiflow/project/LEARNINGS.jsonl" <<'EOF'
 {"id":"learn_memory","kind":"process","scope":"project","topic":"memory","summary":"Launcher status exposes memory curation needs.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
+{"id":"learn_hidden_summary","kind":"process","scope":"project","topic":"memory","summary":"Sensitive internal wording should stay hidden from launcher summary.","evidence":["hooks/launcher-status.sh:1"],"confidence":"high","sensitivity":"normal","last_verified":"2026-06-25","source_commit":"abc1234","status":"current"}
 EOF
 cat > "$REPO/.kimiflow/project/RUN-HISTORY.json" <<'EOF'
 {"schema_version":1,"status":"written","hits":[]}
@@ -165,8 +181,14 @@ cat > "$KIMIFLOW_HOME/metrics/token-economics.jsonl" <<'EOF'
 {"schema_version":1,"recorded_day":"2026-06-25","host":"codex","run_type":"feature","project_size_bucket":"small","project_id":"anon_project","run_id":"anon_run","always_on_tokens":100,"user_memory_tokens":0,"recall_tokens":100,"recall_hit_count":3,"used_hit_count":1,"estimated_avoided_scan_tokens":1200,"net_estimated_tokens_saved":1000,"estimated_savings_percent":83,"result":"saving","confidence":"medium","basis":{"heuristic":"directional_estimate_only","stores_content":false,"stores_paths":false,"local_only":true}}
 EOF
 out="$(run_status)"
-assert_jq "$out" '.memory.present == true and .memory.learnings.current == 1 and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_status_reports_index_missing_curation"
+assert_jq "$out" '.memory.present == true and .memory.learnings.current == 2 and .memory.curation.recommended == true and (.maintenance.reasons | index("memory_curation_recommended"))' "memory_status_reports_index_missing_curation"
 assert_jq "$out" '.memory.history.present == true and .memory.usage.total_uses == 2 and .memory.provider.available == true and .memory.vault.available == true' "launcher_surfaces_history_usage_provider"
+assert_jq "$out" '.memory.usefulness.hot.count == 1 and .memory_summary.usefulness.hot == 1 and .memory_summary.usefulness.cold >= 1 and (.memory_summary.next_actions | index("memory_index_missing"))' "launcher_surfaces_memory_usefulness_summary"
+if printf '%s\n' "$out" | jq -c '.memory_summary' | grep -q "Sensitive internal wording"; then
+  fail "launcher_memory_summary_hides_raw_learning_text"
+else
+  pass "launcher_memory_summary_hides_raw_learning_text"
+fi
 assert_jq "$out" '.efficiency.present == true and .efficiency.runs_tracked == 1 and .efficiency.estimated_savings_percent == 83 and .efficiency.confidence == "low" and .efficiency.privacy.stores_paths == false and .memory.global_efficiency.runs_tracked == 1' "launcher_surfaces_global_efficiency"
 
 "$MEMORY_ROUTER" curate --root "$REPO" --write >/dev/null
@@ -260,6 +282,29 @@ assert_jq "$out" '.runs.done == 3 and .runs.active == 2 and (.runs.items[] | sel
 assert_jq "$out" '.runs.learning_reviews.missing_done == 2 and (.runs.items[] | select(.slug == "legacy-active-done" and .learning_review.verdict == "CLOSED" and .learning_review.reason == "missing_review"))' "done_runs_without_learning_review_surface_without_legacy_noise"
 assert_jq "$out" '.runs.learning_reviews.needs_attention == 1 and (.maintenance.reasons | index("learning_reviews_need_attention")) and (.runs.items[] | select(.slug == "stale-review-done" and .learning_review.verdict == "CLOSED" and .learning_review.reason == "missing_learnings"))' "stale_existing_learning_review_recommends_attention"
 assert_jq "$out" '.maintenance.bring_current_recommended == true and (.maintenance.reasons | index("active_runs"))' "active_runs_recommend_maintenance"
+
+reset_repo
+mkdir -p "$REPO/.kimiflow/current-session"
+cat > "$REPO/.kimiflow/current-session/STATE.md" <<'EOF'
+Status: active
+Mode: feature
+Scope: small
+Affected files: src/a.txt
+Phase 0: done
+Phase 1: done
+Phase 2: done
+Phase 3: done
+Phase 4: done
+Phase 5: in-progress
+EOF
+"$ACTIVE_RUN" start --root "$REPO" --run .kimiflow/current-session --write >/dev/null
+"$ACTIVE_RUN" append-item --root "$REPO" --title "Wire active session into launcher" --write >/dev/null
+out="$(run_status)"
+assert_jq "$out" '.active_session.present == true and .active_session.run == ".kimiflow/current-session" and .active_session.item_counts.open == 1 and .active_session.stale_risk == "current" and (.maintenance.reasons | index("active_session_open"))' "launcher_surfaces_active_session"
+printf 'two\n' > "$REPO/src/a.txt"
+( cd "$REPO" && git add src/a.txt && git commit -q -m change-a )
+out="$(run_status)"
+assert_jq "$out" '.active_session.stale_risk == "needs_revalidation" and (.maintenance.reasons | index("active_session_needs_revalidation"))' "launcher_surfaces_active_session_stale_risk"
 
 reset_repo
 printf '{bad json\n' > "$INDEX"

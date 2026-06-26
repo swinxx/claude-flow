@@ -648,6 +648,67 @@ learning_lifecycle_json() {
 	    ' "$learnings"
 	}
 
+learning_usefulness_json() {
+  local learnings="$1" usage_file="$2"
+  local stale_after="${KIMIFLOW_LEARNING_STALE_AFTER_DAYS:-90}"
+  local cutoff usage='{}'
+  case "$stale_after" in ''|*[!0-9]*) stale_after=90 ;; esac
+  cutoff="$(date_days_ago "$stale_after")"
+  if [ -f "$usage_file" ] && jq -e . "$usage_file" >/dev/null 2>&1; then
+    usage="$(jq -c '.items // {}' "$usage_file")"
+  fi
+  if [ ! -f "$learnings" ]; then
+    jq -n --argjson stale_after "$stale_after" --arg cutoff "$cutoff" '{
+      schema_version: 1,
+      stale_after_days: $stale_after,
+      cutoff_date: (if $cutoff == "" then null else $cutoff end),
+      hot: {count: 0, ids: []},
+      warm: {count: 0, ids: []},
+      cold: {count: 0, ids: []},
+      stale: {count: 0, ids: []},
+      promote_candidates: {count: 0, ids: []},
+      compress_candidates: {count: 0, ids: []}
+    }'
+    return 0
+  fi
+
+  jq -Rsc \
+    --argjson usage "$usage" \
+    --arg cutoff "$cutoff" \
+    --argjson stale_after "$stale_after" \
+    '
+      def bounded_ids: map(.id // "") | map(select(length > 0)) | .[:20];
+      split("\n")
+      | map(select(length > 0) | (fromjson? // empty))
+      | map(select((.status // "current") == "current")) as $current
+      | ($current
+          | map(. + {
+              use_count: (($usage["learning:" + (.id // "")].use_count // 0) | tonumber? // 0),
+              is_stale: (($cutoff != "") and ((.last_verified // "") < $cutoff))
+            })) as $rows
+      | ($rows | map(select(.is_stale))) as $stale
+      | ($rows | map(select((.is_stale | not) and .use_count >= 2))) as $hot
+      | ($rows | map(select((.is_stale | not) and .use_count == 1))) as $warm
+      | ($rows | map(select((.is_stale | not) and .use_count == 0))) as $cold
+      | (($hot + $warm)
+          | map(select((.confidence // "medium") as $confidence | (["high","medium"] | index($confidence)) != null))
+          | map(select((.sensitivity // "normal") as $sensitivity | (["private","security"] | index($sensitivity)) == null))) as $promote
+      | ($cold + $stale) as $compress
+      | {
+          schema_version: 1,
+          stale_after_days: $stale_after,
+          cutoff_date: (if $cutoff == "" then null else $cutoff end),
+          hot: {count: ($hot | length), ids: ($hot | bounded_ids)},
+          warm: {count: ($warm | length), ids: ($warm | bounded_ids)},
+          cold: {count: ($cold | length), ids: ($cold | bounded_ids)},
+          stale: {count: ($stale | length), ids: ($stale | bounded_ids)},
+          promote_candidates: {count: ($promote | length), ids: ($promote | bounded_ids)},
+          compress_candidates: {count: ($compress | length), ids: ($compress | bounded_ids)},
+          basis: "exclusive_tiers_current_rows; stale rows are never promote candidates"
+        }
+    ' "$learnings"
+}
+
 provider_manifest_json() {
   local file="$1"
   if [ -f "$file" ] && jq -e . "$file" >/dev/null 2>&1; then
@@ -1347,7 +1408,7 @@ status_json() {
   local provider_manifest="$project/VAULT-PROVIDER.json"
   local proposal_rows="$project/PROPOSALS.jsonl"
 
-  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present economics_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json economics_json global_efficiency_json lifecycle_json provider_json provider_sync_json vault_json sqlite_available
+  local memory_tokens user_tokens memory_present learnings_present user_memory_present user_rows_present index_present recall_present recall_db_present run_history_present usage_present economics_present provider_present proposal_rows_present learning_json user_json proposals_json usage_json economics_json global_efficiency_json lifecycle_json usefulness_json provider_json provider_sync_json vault_json sqlite_available
   memory_tokens="$(word_count_file "$memory")"
   user_tokens="$(word_count_file "$user_memory")"
   memory_present=false; [ -f "$memory" ] && memory_present=true
@@ -1370,6 +1431,7 @@ status_json() {
   economics_json="$(economics_summary_json "$economics_file")"
   global_efficiency_json="$(global_efficiency_summary_json)"
   lifecycle_json="$(learning_lifecycle_json "$learnings" "$usage_file")"
+  usefulness_json="$(learning_usefulness_json "$learnings" "$usage_file")"
   provider_json="$(provider_status_json "$provider_manifest")"
   provider_sync_json="$(provider_sync_status_json "$root" "$learnings" "$provider_manifest")"
   vault_json="$(vault_status_json "$index" "$provider_manifest")"
@@ -1413,6 +1475,7 @@ status_json() {
     --argjson economics "$economics_json" \
     --argjson global_efficiency "$global_efficiency_json" \
     --argjson lifecycle "$lifecycle_json" \
+    --argjson usefulness "$usefulness_json" \
     --argjson provider "$provider_json" \
     --argjson provider_sync "$provider_sync_json" \
     --argjson vault "$vault_json" \
@@ -1472,6 +1535,7 @@ status_json() {
       },
       learnings: ($learnings + {present: $learnings_present, path: $learnings_path}),
       lifecycle: $lifecycle,
+      usefulness: $usefulness,
       usage: ($usage + {present: $usage_present, path: $usage_path}),
       economics: ($economics + {present: $economics_present, path: $economics_path}),
       global_efficiency: $global_efficiency,
@@ -1712,10 +1776,13 @@ write_recall_markdown() {
     printf -- '- MEMORY.md: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.memory.status')"
     printf -- '- USER.md: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.user_profile.status')"
     printf -- '- LEARNINGS.jsonl hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.learnings.count')"
-    printf -- '- FACTS.jsonl hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.facts.count')"
-    printf -- '- RECALL.sqlite: %s (%s hits)\n' "$(printf '%s\n' "$json" | jq -r '.sources.index.status')" "$(printf '%s\n' "$json" | jq -r '.sources.index.count')"
-    printf -- '- Run history hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.history.count')"
-    printf '\n## Omitted\n\n'
+	    printf -- '- FACTS.jsonl hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.facts.count')"
+	    printf -- '- RECALL.sqlite: %s (%s hits)\n' "$(printf '%s\n' "$json" | jq -r '.sources.index.status')" "$(printf '%s\n' "$json" | jq -r '.sources.index.count')"
+	    printf -- '- Run history hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.sources.history.count')"
+	    printf '\n## Explanation\n\n'
+	    printf -- '- Reason codes: %s\n' "$(printf '%s\n' "$json" | jq -r '(.explanation.reason_codes // []) | join(", ")')"
+	    printf -- '- Total hits: %s\n' "$(printf '%s\n' "$json" | jq -r '.explanation.hit_counts.total // 0')"
+	    printf '\n## Omitted\n\n'
     printf '%s\n' "$json" | jq -r '.omitted[]? | "- " + .'
 	  } > "$path"
 	}
@@ -1854,8 +1921,8 @@ cmd_recall() {
       query: $query,
       query_terms: $terms,
       token_budget: $budget,
-      sources: {
-        memory: {
+	      sources: {
+	        memory: {
           path: $memory_path,
           status: $memory_status,
           tokens_estimate: $memory_tokens,
@@ -1889,10 +1956,48 @@ cmd_recall() {
           status: (if ($history_hits | length) > 0 then "used" else "available_no_hits" end),
           count: ($history_hits | length),
           hits: $history_hits
-        }
-      },
-      omitted: $omitted
-    }')"
+	        }
+	      },
+	      explanation: (
+	        ([
+	          if $memory_status == "included" then "always_on_included" else empty end,
+	          if $memory_status == "omitted_over_budget" then "memory_over_budget" else empty end,
+	          if $memory_status == "missing" then "memory_missing" else empty end,
+	          if $user_status == "included" then "user_profile_included" else empty end,
+	          if $user_status == "omitted_over_budget" then "user_profile_over_budget" else empty end,
+	          if ($learnings | length) > 0 then "local_recall_hits" else empty end,
+	          if ($facts | length) > 0 then "project_map_fact_hits" else empty end,
+	          if ($index_hits | length) > 0 then "fts_index_hits" else empty end,
+	          if ($history_hits | length) > 0 then "history_hits" else empty end,
+	          if (($learnings | length) + ($facts | length) + ($index_hits | length) + ($history_hits | length)) == 0 then "no_recall_hits" else empty end
+	        ]) as $reason_codes
+	        | {
+	            reason_codes: $reason_codes,
+	            included_sources: ([
+	              if $memory_status == "included" then "MEMORY.md" else empty end,
+	              if $user_status == "included" then "USER.md" else empty end,
+	              if ($learnings | length) > 0 then "LEARNINGS.jsonl" else empty end,
+	              if ($facts | length) > 0 then "FACTS.jsonl" else empty end,
+	              if ($index_hits | length) > 0 then "RECALL.sqlite" else empty end,
+	              if ($history_hits | length) > 0 then "RUN-HISTORY" else empty end
+	            ]),
+	            omitted_sources: ([
+	              if $memory_status == "omitted_over_budget" then {source: "MEMORY.md", reason: "over_budget"} else empty end,
+	              if $memory_status == "missing" then {source: "MEMORY.md", reason: "missing"} else empty end,
+	              if $user_status == "omitted_over_budget" then {source: "USER.md", reason: "over_budget"} else empty end,
+	              if $user_status == "missing" then {source: "USER.md", reason: "missing"} else empty end
+	            ]),
+	            hit_counts: {
+	              learnings: ($learnings | length),
+	              facts: ($facts | length),
+	              index: ($index_hits | length),
+	              history: ($history_hits | length),
+	              total: (($learnings | length) + ($facts | length) + ($index_hits | length) + ($history_hits | length))
+	            }
+	          }
+	      ),
+	      omitted: $omitted
+	    }')"
 
   if [ -n "$write_path" ]; then
     case "$write_path" in
@@ -3057,6 +3162,116 @@ write_learning_review_markdown() {
   } > "$path"
 }
 
+run_lifecycle_json() {
+  local root="$1" run_dir="$2" learning_status="$3" review_path="$4" recorded_count="$5" memory_updated="$6" economics_update="$7" notification="$8"
+  local run_rel lifecycle_json lifecycle_md status_snapshot
+  run_rel="$(rel_path "$root" "$run_dir")"
+  lifecycle_json="$(rel_path "$root" "$run_dir/RUN-LIFECYCLE.json")"
+  lifecycle_md="$(rel_path "$root" "$run_dir/RUN-LIFECYCLE.md")"
+  status_snapshot="$(status_json "$root")"
+  jq -n \
+    --arg run "$run_rel" \
+    --arg generated_at "$(iso_now)" \
+    --arg learning_status "$learning_status" \
+    --arg review_path "$(rel_path "$root" "$review_path")" \
+    --arg lifecycle_json "$lifecycle_json" \
+    --arg lifecycle_md "$lifecycle_md" \
+    --argjson recorded_count "$recorded_count" \
+    --argjson memory_updated "$memory_updated" \
+    --argjson economics "$economics_update" \
+    --argjson notification "$notification" \
+    --argjson status "$status_snapshot" \
+    '{
+      schema_version: 1,
+      run: $run,
+      generated_at: $generated_at,
+      written: true,
+      status: $learning_status,
+      paths: {
+        learning_review: $review_path,
+        lifecycle_json: $lifecycle_json,
+        lifecycle_markdown: $lifecycle_md,
+        provider_sync: ".kimiflow/project/VAULT-SYNC.md"
+      },
+      learning: {
+        status: $learning_status,
+        recorded_count: $recorded_count,
+        memory_updated: $memory_updated,
+        review_path: $review_path
+      },
+      usefulness: ($status.usefulness // {}),
+      economics: {
+        recorded: ($economics.recorded == true),
+        result: ($economics.row.result // "unknown"),
+        confidence: ($economics.row.confidence // "none"),
+        net_estimated_tokens_saved: ($economics.row.net_estimated_tokens_saved // 0),
+        estimated_avoided_scan_tokens: ($economics.row.estimated_avoided_scan_tokens // 0),
+        basis: "directional_estimate_only"
+      },
+      curation: {
+        recommended: ($status.curation.recommended == true),
+        reasons: ($status.curation.reasons // [])
+      },
+      provider_sync: {
+        status: ($status.provider.sync.status // "unknown"),
+        pending_count: ($status.provider.sync.pending_count // 0),
+        direct_write_ready: ($status.provider.sync.direct_write_ready == true),
+        path: ".kimiflow/project/VAULT-SYNC.md"
+      },
+      proposals: {
+        notification: $notification
+      },
+      external_writes: {
+        performed: false,
+        reason: "review-run records local lifecycle state only; provider sync/write stays explicit"
+      },
+      next_actions: (
+        (
+          ($status.curation.reasons // [])
+          + [if (($status.provider.sync.pending_count // 0) > 0) then "provider_sync_pending" else empty end]
+          + [if (($notification.pending // 0) > 0) then "review_learning_proposals" else empty end]
+        ) | unique
+      )
+    }'
+}
+
+write_run_lifecycle_json() {
+  local path="$1" json="$2"
+  mkdir -p "$(dirname "$path")"
+  printf '%s\n' "$json" | jq . > "$path"
+}
+
+write_run_lifecycle_markdown() {
+  local path="$1" json="$2"
+  mkdir -p "$(dirname "$path")"
+  {
+    printf '# Run Lifecycle\n\n'
+    printf 'Run: %s\n' "$(printf '%s\n' "$json" | jq -r '.run')"
+    printf 'Status: %s\n' "$(printf '%s\n' "$json" | jq -r '.status')"
+    printf 'Generated: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.generated_at')"
+    printf '## Learning\n\n'
+    printf -- '- Recorded count: %s\n' "$(printf '%s\n' "$json" | jq -r '.learning.recorded_count')"
+    printf -- '- Memory updated: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.learning.memory_updated')"
+    printf '## Usefulness\n\n'
+    printf -- '- Hot: %s\n' "$(printf '%s\n' "$json" | jq -r '.usefulness.hot.count // 0')"
+    printf -- '- Warm: %s\n' "$(printf '%s\n' "$json" | jq -r '.usefulness.warm.count // 0')"
+    printf -- '- Cold: %s\n' "$(printf '%s\n' "$json" | jq -r '.usefulness.cold.count // 0')"
+    printf -- '- Stale: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.usefulness.stale.count // 0')"
+    printf '## Economics\n\n'
+    printf -- '- Result: %s\n' "$(printf '%s\n' "$json" | jq -r '.economics.result')"
+    printf -- '- Confidence: %s\n' "$(printf '%s\n' "$json" | jq -r '.economics.confidence')"
+    printf -- '- Net estimated tokens saved: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.economics.net_estimated_tokens_saved')"
+    printf '## Curation\n\n'
+    printf -- '- Reasons: %s\n\n' "$(printf '%s\n' "$json" | jq -r '(.curation.reasons // []) | join(", ")')"
+    printf '## Provider Sync\n\n'
+    printf -- '- Status: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider_sync.status')"
+    printf -- '- Pending: %s\n' "$(printf '%s\n' "$json" | jq -r '.provider_sync.pending_count')"
+    printf -- '- Direct write ready: %s\n\n' "$(printf '%s\n' "$json" | jq -r '.provider_sync.direct_write_ready')"
+    printf '## Next Actions\n\n'
+    printf '%s\n' "$json" | jq -r '(.next_actions // []) | if length == 0 then "- none" else map("- " + .) | join("\n") end'
+  } > "$path"
+}
+
 cmd_review_run() {
   local root="" run="" pretty=0 write=0 skip_reason=""
   while [ "$#" -gt 0 ]; do
@@ -3073,7 +3288,7 @@ cmd_review_run() {
   done
   need_jq
   root="$(resolve_root "$root")"
-  local run_dir run_rel review candidate entries recorded count i entry kind scope topic summary evidence_json confidence sensitivity id out memory_updated proposal_update notification economics_update
+  local run_dir run_rel review candidate entries recorded count i entry kind scope topic summary evidence_json confidence sensitivity id out memory_updated proposal_update notification economics_update lifecycle_update
   run_dir="$(resolve_run_dir "$root" "$run")"
   run_rel="$(rel_path "$root" "$run_dir")"
   review="$run_dir/LEARNING-REVIEW.md"
@@ -3081,11 +3296,15 @@ cmd_review_run() {
   proposal_update='{}'
   notification='{}'
   economics_update='{"recorded":false}'
+  lifecycle_update='{"written":false}'
 
   if [ -n "$skip_reason" ]; then
     if [ "$write" -eq 1 ]; then
       write_learning_review_markdown "$review" "$run_rel" "skipped" "[]" "$skip_reason"
       economics_update="$(record_run_economics_json "$root" "$run_dir")"
+      lifecycle_update="$(run_lifecycle_json "$root" "$run_dir" "skipped" "$review" 0 false "$economics_update" "{}")"
+      write_run_lifecycle_json "$run_dir/RUN-LIFECYCLE.json" "$lifecycle_update"
+      write_run_lifecycle_markdown "$run_dir/RUN-LIFECYCLE.md" "$lifecycle_update"
     fi
     out="$(jq -n \
       --arg run "$run_rel" \
@@ -3093,6 +3312,7 @@ cmd_review_run() {
       --arg reason "$skip_reason" \
       --argjson written "$write" \
       --argjson economics_update "$economics_update" \
+      --argjson lifecycle_update "$lifecycle_update" \
       '{
         schema_version: 1,
         status: "skipped",
@@ -3103,7 +3323,8 @@ cmd_review_run() {
         entries: [],
         recorded_count: 0,
         memory_updated: false,
-        economics: $economics_update
+        economics: $economics_update,
+        lifecycle: $lifecycle_update
       }')"
     json_print "$out" "$pretty"
     return 0
@@ -3155,6 +3376,9 @@ cmd_review_run() {
     notification="$(printf '%s\n' "$proposal_update" | jq -c '.notification // {}')"
     economics_update="$(record_run_economics_json "$root" "$run_dir")"
     write_learning_review_markdown "$review" "$run_rel" "recorded" "$entries" ""
+    lifecycle_update="$(run_lifecycle_json "$root" "$run_dir" "recorded" "$review" "$count" true "$economics_update" "$notification")"
+    write_run_lifecycle_json "$run_dir/RUN-LIFECYCLE.json" "$lifecycle_update"
+    write_run_lifecycle_markdown "$run_dir/RUN-LIFECYCLE.md" "$lifecycle_update"
   fi
 
   out="$(jq -n \
@@ -3166,6 +3390,7 @@ cmd_review_run() {
     --argjson proposal_update "$proposal_update" \
     --argjson notification "$notification" \
     --argjson economics_update "$economics_update" \
+    --argjson lifecycle_update "$lifecycle_update" \
     '{
       schema_version: 1,
       status: (if $written == 1 then "recorded" else "preview" end),
@@ -3177,7 +3402,8 @@ cmd_review_run() {
       memory_updated: $memory_updated,
       proposal_update: $proposal_update,
       notification: $notification,
-      economics: $economics_update
+      economics: $economics_update,
+      lifecycle: $lifecycle_update
     }')"
   json_print "$out" "$pretty"
 }

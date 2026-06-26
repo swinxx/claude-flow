@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# kimiflow — plan-blocker gate. Mechanical, plan-agnostic pre-review guard.
+#
+# Usage:
+#   plan-blocker-gate.sh <run-dir> [--pretty]
+#
+# Output:
+#   PLAN_BLOCKER_GATE<TAB>OPEN|CLOSED<TAB>blockers=<n><TAB>reason=<code><TAB>detail=<codes>
+#
+# This is intentionally conservative and language-agnostic. It does not judge whether
+# a plan is good; it blocks plans that are not implementable/verifiable enough to
+# deserve an expensive reviewer round.
+set -u
+
+emit() {
+  printf 'PLAN_BLOCKER_GATE\t%s\tblockers=%s\treason=%s\tdetail=%s\n' "$1" "$2" "$3" "${4:-}"
+  exit 0
+}
+
+run_dir=""
+pretty=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --pretty) pretty=1; shift ;;
+    -*) shift ;;
+    *) [ -z "$run_dir" ] && run_dir="$1"; shift ;;
+  esac
+done
+
+[ -n "$run_dir" ] || emit CLOSED 1 malformed "missing_run_dir"
+[ -d "$run_dir" ] || emit CLOSED 1 malformed "run_dir_missing"
+
+state="$run_dir/STATE.md"
+plan="$run_dir/PLAN.md"
+acceptance="$run_dir/ACCEPTANCE.md"
+
+find_first() {
+  local p
+  for p in "$@"; do
+    [ -f "$run_dir/$p" ] && { printf '%s\n' "$run_dir/$p"; return 0; }
+  done
+  return 1
+}
+
+intent="$(find_first INTENT.md PROBLEM.md AUDIT-INTENT.md 2>/dev/null || true)"
+understanding="$(find_first RESEARCH.md DIAGNOSIS.md AUDIT.md 2>/dev/null || true)"
+
+blockers=0
+details=""
+add_blocker() {
+  blockers=$((blockers + 1))
+  if [ -z "$details" ]; then details="$1"; else details="$details,$1"; fi
+}
+
+ac_token_pattern() {
+  printf '(^|[^[:alnum:]_-])%s([^[:alnum:]_-]|$)' "$1"
+}
+
+file_has_ac_token() {
+  local file="$1" ac="$2"
+  [ -f "$file" ] && grep -Eq "$(ac_token_pattern "$ac")" "$file"
+}
+
+PATH_RE='(^|[[:space:][:punct:]])([A-Za-z0-9._/-]+\.[A-Za-z0-9]{1,8}|[A-Za-z0-9._/-]*(Dockerfile|Containerfile|Makefile|Procfile|Justfile|Rakefile|Gemfile|Vagrantfile))(:[0-9]+)?([[:space:][:punct:]]|$)'
+file_has_path_evidence() {
+  local file="$1"
+  [ -f "$file" ] && grep -Eq "$PATH_RE" "$file"
+}
+
+file_declares_affected_paths() {
+  local file="$1"
+  [ -f "$file" ] || return 1
+  awk '
+    {
+      line = $0
+      gsub(/\r/, "", line)
+      gsub(/\*\*/, "", line)
+      plain = line
+      sub(/^[[:space:]]*-[[:space:]]*/, "", plain)
+      if (plain ~ /^[[:space:]]*(Affected files|Affected paths|Files|Paths|Touches)[[:space:]]*:/) {
+        sub(/^[^:]*:[[:space:]]*/, "", plain)
+        if (length(plain) > 0) print plain
+        in_list = 1
+        next
+      }
+      if (in_list && line ~ /^[[:space:]]*-[[:space:]]+/) {
+        sub(/^[[:space:]]*-[[:space:]]+/, "", line)
+        print line
+        next
+      }
+      if (in_list && line !~ /^[[:space:]]*$/) in_list = 0
+    }
+  ' "$file" | grep -Eq "$PATH_RE"
+}
+
+require_file() {
+  local path="$1" code="$2"
+  if [ -z "$path" ] || [ ! -f "$path" ]; then
+    add_blocker "$code"
+    return 1
+  fi
+  if [ ! -s "$path" ]; then
+    add_blocker "${code}_empty"
+    return 1
+  fi
+  return 0
+}
+
+require_file "$state" state_missing >/dev/null || true
+require_file "$intent" intent_missing >/dev/null || true
+require_file "$understanding" understanding_missing >/dev/null || true
+require_file "$plan" plan_missing >/dev/null || true
+require_file "$acceptance" acceptance_missing >/dev/null || true
+
+if [ -f "$plan" ]; then
+  if grep -Eiq '\b(TBD|TODO|FIXME|NEEDS CLARIFICATION|OPEN QUESTION|NOT VERIFIED|UNKNOWN)\b' "$plan"; then
+    add_blocker "plan_contains_unresolved_marker"
+  fi
+fi
+
+if [ -f "$acceptance" ]; then
+  if grep -Eiq '\b(TBD|TODO|FIXME|NEEDS CLARIFICATION|OPEN QUESTION|NOT VERIFIED|UNKNOWN)\b' "$acceptance"; then
+    add_blocker "acceptance_contains_unresolved_marker"
+  fi
+  ac_ids="$(grep -Eo 'AC-[0-9]+' "$acceptance" | sort -u || true)"
+  if [ -z "$ac_ids" ]; then
+    add_blocker "acceptance_has_no_ac_ids"
+  else
+    missing_plan_ids=""
+    missing_verify_ids=""
+    while IFS= read -r ac; do
+      [ -n "$ac" ] || continue
+      if [ -f "$plan" ] && ! file_has_ac_token "$plan" "$ac"; then
+        missing_plan_ids="${missing_plan_ids}${ac} "
+      fi
+      ac_lines="$(grep -En "$(ac_token_pattern "$ac")" "$acceptance" || true)"
+      if ! printf '%s\n' "$ac_lines" | grep -Eiq '(→|->|test|verify|verification|command|manual|smoke|assert|check)'; then
+        missing_verify_ids="${missing_verify_ids}${ac} "
+      fi
+    done <<EOF
+$ac_ids
+EOF
+    [ -z "$missing_plan_ids" ] || add_blocker "acceptance_not_mapped_to_plan:${missing_plan_ids% }"
+    [ -z "$missing_verify_ids" ] || add_blocker "acceptance_missing_verification:${missing_verify_ids% }"
+  fi
+
+  if grep -Eiq '\b(fast|robust|proper|nice|easy|seamless|user-friendly|performant)\b' "$acceptance" \
+    && ! grep -Eiq '(ms|seconds?|tokens?|count|limit|threshold|exit code|assert|snapshot|golden|expected|actual|command|test|verify|manual|smoke)' "$acceptance"; then
+    add_blocker "acceptance_uses_vague_quality_terms"
+  fi
+fi
+
+if [ -f "$plan" ] || [ -f "$acceptance" ]; then
+  if ! file_has_path_evidence "$plan" && ! file_has_path_evidence "$acceptance"; then
+    add_blocker "no_code_or_artifact_path_evidence"
+  fi
+fi
+
+if [ -f "$state" ]; then
+  if ! file_declares_affected_paths "$state" && ! file_declares_affected_paths "$plan"; then
+    add_blocker "affected_files_not_declared"
+  fi
+fi
+
+if [ "$blockers" -eq 0 ]; then
+  emit OPEN 0 clean ""
+fi
+
+emit CLOSED "$blockers" plan-blockers "$details"

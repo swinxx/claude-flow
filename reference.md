@@ -14,7 +14,7 @@ requests.
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
 repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, open findings,
-open improvement slices, repo-doc presence, and active/backlog/done runs. The orchestrator may summarize this
+open feature-check findings, open improvement slices, repo-doc presence, active-session status, and active/backlog/done runs. The orchestrator may summarize this
 JSON, but must not invent counts.
 
 **Start menu (user language):** show a compact numbered menu, tuned to the snapshot. Typical full menu:
@@ -26,9 +26,11 @@ Projektkarte: standard · aktuell
 Memory: 820/900 Tokens · aktuell
 Effizienz: geschätzt 18% Token Savings · 12 Runs · Sicherheit niedrig
 Offene Findings: 4
+Feature-Check Findings: 1
 Geparkte Runs: 2
 Repo-Doku: vorhanden
 Working Tree: geändert
+Aktive Session: offen · Items 2 · aktuell
 
 Was willst du tun?
 
@@ -41,7 +43,8 @@ Was willst du tun?
 7. Verbesserungen priorisieren
 8. Doku schreiben/aktualisieren
 9. Idee/unklaren Auftrag ausarbeiten
-10. Memory/Recall prüfen oder kuratieren
+10. Eingebautes Feature prüfen
+11. Memory/Recall prüfen oder kuratieren
 ```
 
 If `.kimiflow/project/INDEX.json` is missing, bias the first menu toward Project Map Bootstrap:
@@ -78,6 +81,10 @@ hygiene pass, not an implementation mode:
   `--fix`, docs, or improve run with its own state dir.
 - Backlog runs: list slug, status, mode, scope, plan commit, affected-file count, and stale risk from the
   snapshot. Selecting a run starts the resume safety check; it never jumps directly to implementation.
+- Active session: if `active_session.present` and not terminal, show it before the normal menu. Offer
+  `continue`, `show items`, `finish after verification`, `park`, `fail`, or `abort`. If
+  `active_session.stale_risk == "needs_revalidation"`, the first action is revalidation; blind finish is not
+  allowed.
 - Done runs: count `Status: done`; for legacy states, a Phase-7-done / `RUN COMPLETE` signal may be inferred as
   done so old completed runs do not remain noisy active work. Surface missing `LEARNING-REVIEW.md` in
   `runs.learning_reviews.missing_done` and stale/invalid existing reviews as `learning_reviews_need_attention`;
@@ -85,6 +92,10 @@ hygiene pass, not an implementation mode:
 - Improve: translate "improve" into handles: `top 3 levers`, `architecture simplification`,
   `code quality/refactoring`, `scalability/performance`, `tests/robustness`, `docs/onboarding`,
   `security/privacy`. "Top 3 levers" produces a prioritized improve analysis before any build plan.
+- Existing feature check: route to `/kimiflow --verify-feature <feature-or-path>`. Use it when the user wants to
+  check whether an already-built feature really works, whether frontend/backend/API pieces are wired together, or
+  whether tests/docs cover the delivered behavior. It is review-only; confirmed findings become fix/improve choices,
+  not automatic edits.
 - Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons. Offer
   `recall for current task`, `curate index`, `show current learnings`, `back`; do not dump full Vault notes or
   full `LEARNINGS.jsonl`.
@@ -117,6 +128,67 @@ first, refresh stale affected sections if accepted, compare plan assumptions aga
 
 Headless/no-answer behavior is always safe: print the snapshot summary, do not select a mode, do not resume
 implementation, and STOP.
+
+---
+
+## Active Session Contract
+
+The Active Session Contract makes an explicitly started Kimiflow run sticky across follow-up prompts. It is
+plan-agnostic: it does not know what feature is being built; it only knows whether the current Kimiflow run has
+open items, stale state, or a terminal outcome.
+
+**Helper:** `hooks/active-run.sh`
+
+Core files:
+
+- `.kimiflow/session/ACTIVE_RUN.json` — project-local pointer to the current active run.
+- `.kimiflow/<slug>/ITEMS.jsonl` — run-local list of sequential changes/items.
+- `.kimiflow/<slug>/SESSION-OUTCOME.json` — terminal outcome written by finish/park/fail/abort.
+
+Commands:
+
+```bash
+hooks/active-run.sh status --pretty
+hooks/active-run.sh start --run .kimiflow/<slug> --mode feature --scope small --write
+hooks/active-run.sh append-item --title "..." --kind feature --write
+hooks/active-run.sh mark-built --id item_001 --write
+hooks/active-run.sh mark-accepted --id item_001 --write
+hooks/active-run.sh mark-rejected --id item_001 --reason "..." --write
+hooks/active-run.sh drop-item --id item_001 --reason "out of scope" --write
+hooks/active-run.sh refresh-baseline --write
+hooks/active-run.sh finish --write
+hooks/active-run.sh park --reason "waiting for user validation" --write
+hooks/active-run.sh fail --reason "verification failed" --write
+hooks/active-run.sh abort --reason "user switched workflow" --write
+```
+
+**Prompt behavior:** the `UserPromptSubmit` hook calls `active-run.sh prompt-context`. When an active session
+exists, it injects a small reminder into the next model turn: keep the follow-up request inside Kimiflow unless
+the user explicitly exits/parks/fails/aborts/switches. It does not store the raw prompt text.
+
+**Stop behavior:** the `Stop` hook calls `active-run.sh stop-gate`. It blocks completion while an active
+session is non-terminal, unless the stop is already a hook continuation. The model must continue the Kimiflow
+loop or close it mechanically with `finish`, `park`, `fail`, or `abort`.
+
+**Item lifecycle:** sequential changes accumulate as items:
+
+- `pending` — requested but not built.
+- `built` — implemented but not accepted.
+- `accepted` — user or verification accepted it.
+- `rejected` — user/verification says it still fails; finish is blocked.
+- `dropped` — deliberately removed from scope with a reason.
+
+`finish --write` refuses `pending`, `built`, and `rejected` items. It also refuses stale sessions. After the run
+is revalidated, `refresh-baseline --write` records the current commit and lets finish proceed.
+
+**Learning boundary:** `finish --write` is the only active-session terminal path that promotes positive
+learnings. It runs `memory-router.sh review-run --write` and then `verify-run`. `park`, `fail`, and `abort`
+clear the active session with `learning_review.status = not_promoted`, so failed or unverified work does not
+become project memory.
+
+**Staleness:** `status` compares the active session baseline to current Git changes and affected files from
+`STATE.md`. If a relevant file changed, status reports `stale_risk: needs_revalidation`, the launcher surfaces
+that state, prompt-context mentions revalidation, and finish is blocked until revalidated.
 
 ---
 
@@ -241,6 +313,44 @@ chosen direction, which Clarify then narrows. **Resume:** Explore done with a ch
 **STATE:** the `Phase E (explore): open|in-progress|done` line is written **only when Explore runs** —
 it is **absent on non-explore runs** (the phase is purely additive; a run without `--explore`/an
 accepted offer is behaviorally unchanged).
+
+---
+
+## Existing feature check (`--verify-feature`)
+
+A review-only mode for features that are already implemented. It answers: does the feature exist, is it wired
+end-to-end, and what should be fixed next? It does not edit code or commit. If the user chooses a confirmed issue,
+start a new normal `--fix` or improve run with that finding as input.
+
+**Flow:**
+1. **Target.** Require a feature name, route, component, command, API path, or file path. If vague, ask one short
+   question for the target and expected user-visible behavior.
+2. **Recall first.** Use project map and Memory Router recall for the target. Prefer existing current maps/history
+   over fresh broad scans.
+3. **Cheap lens fan-out when available.** Send narrow read-only lens tasks to small/fast subagents when the host
+   supports model choice (Codex may use small model overrides for these lenses; Claude Code should use its cheapest
+   suitable subagent/model setting if available). Fallback is one sequential reviewer. Do not spawn duplicate lenses.
+4. **Lens set (choose only relevant lenses):**
+   - `behavior`: can a user actually trigger the feature and see the expected result?
+   - `wiring`: are frontend, backend, routes, commands, hooks, events, and exports connected?
+   - `contract`: do API/schema/types/config/env contracts match on both sides?
+   - `state-data`: is state, persistence, migration, cache, and error handling coherent?
+   - `tests`: do tests cover the real behavior rather than stubs or isolated helpers?
+   - `docs-security`: are docs accurate and are security/privacy implications handled?
+5. **Candidate format from each lens:** one line per issue:
+   `CANDIDATE <SEVERITY> <file:line|artifact> :: <claim> :: verify=<smallest check>`.
+   `NONE` if clean. No long prose, no full logs.
+6. **Orchestrator verification.** A candidate is not a Kimiflow finding until the orchestrator verifies it with
+   targeted code reads, commands, or reproduction. Unverified candidates are recorded as `UNVERIFIED` in
+   `FEATURE-CHECK.md`, not promoted to blockers.
+7. **Output.** Write `.kimiflow/<slug>/FEATURE-CHECK.md` with: target, evidence read, lens results, verified
+   findings, unverified candidates, recommended next actions. Confirmed HIGH/BLOCKER findings may also be written
+   to `findings/r1-feature-check.md` in the normal `FINDING <SEVERITY> <ref> :: <reason>` format so the launcher can
+   surface them.
+
+**Token rule:** the value comes from not loading everything into the orchestrator. Lenses get only target/context
+paths and return candidate lines. The orchestrator verifies only candidates, so total context stays bounded. If a
+lens would need a broad scan, prefer Project Map refresh first.
 
 ---
 
@@ -653,6 +763,8 @@ files work without any API key, subscription, or MCP server.
   CODE-REVIEW.md     Phase-7 code-review summary, searched and eligible for compact pitfall extraction
   findings/*.md      canonical review-gate findings, searched locally but not promoted directly
   LEARNING-REVIEW.md required run-close artifact; recorded or explicitly skipped
+  RUN-LIFECYCLE.json compact machine-readable run-close lifecycle summary
+  RUN-LIFECYCLE.md   short human-readable run-close lifecycle summary
 ```
 
 **Helper:** `hooks/memory-router.sh` is the mechanical source for local memory state, recall, classification,
@@ -696,7 +808,8 @@ memory-router.sh provider <status|health|setup|detect|connect|configure|prefetch
 **Post-run learning loop (required before `Status: done`):** after verification/review and before closing
 `STATE.md`, run `memory-router.sh review-run --run .kimiflow/<slug> --write`. It creates the run-local
 `LEARNING-REVIEW.md`, appends durable rows to `LEARNINGS.jsonl`, refreshes bounded `MEMORY.md`, and refreshes
-`MEMORY-INDEX.json`, optional `RECALL.sqlite`, and lifecycle/usage metadata. It also refreshes local proposal state and returns a compact notification with pending,
+`MEMORY-INDEX.json`, optional `RECALL.sqlite`, lifecycle/usage metadata, and a compact run-local
+`RUN-LIFECYCLE.json` / `RUN-LIFECYCLE.md` summary. It also refreshes local proposal state and returns a compact notification with pending,
 approved, applied, and rejected proposal counts. Then run `memory-router.sh verify-run --run .kimiflow/<slug>`;
 `CLOSED` blocks the run
 from being marked done. Trivial runs may use `review-run --write --skip "<reason>"`, but the reason must be
@@ -735,7 +848,11 @@ run artifacts, including `REVIEW.md`, `CODE-REVIEW.md`, `ADVISORIES.md`, and can
 plans/reviews without loading whole run folders. Raw findings stay local search material; they are not promoted
 directly to repo docs or Vault.
 
-**Usage, economics, and lifecycle metrics:** persisted recall/history writes update `MEMORY-USAGE.json` with
+**Usefulness, recall explanation, economics, and lifecycle metrics:** `memory-router.sh status` reports a compact
+`.usefulness` section with exclusive hot/warm/cold/stale learning tiers plus promote/compress candidate counts;
+stale rows are never promotion candidates. `recall --write` stores a small `explanation` object in the run-local
+`RECALL.json` with included/omitted source states, hit counts, and reason codes so the agent can say why memory was
+loaded without dumping memory contents. Persisted recall/history writes update `MEMORY-USAGE.json` with
 `use_count`, `last_used_at`, and a bounded event log for recall/history writes: hit count, approximate output-token
 cost, and the recalled keys. A run-local `RECALL.json` is written beside `RECALL.md` so `review-run --write` can
 append one idempotent row to `MEMORY-ECONOMICS.jsonl`: always-on/user memory tokens, recall tokens, recall hits,
@@ -755,7 +872,10 @@ older rows are normalized to the current `used_hit_count` heuristic when summari
 `recall_hit_count` estimates cannot inflate savings.
 `curate --write` folds those metrics into
 `MEMORY-INDEX.json` and reports lifecycle data such as stale learning candidates, cold/unused current rows, and the
-configured `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window. `MEMORY.md` stays always-on but use-aware:
+configured `KIMIFLOW_LEARNING_STALE_AFTER_DAYS` window. `review-run --write` writes the run-local lifecycle summary
+with learning status, memory update status, usefulness counts, directional economics, visible curation reasons,
+provider sync readiness, proposal notification, and bounded next actions. It never writes external Vault notes
+directly; provider sync/write remains an explicit handoff/direct-tool action. `MEMORY.md` stays always-on but use-aware:
 it prefers frequently recalled, high-confidence, recent publish-safe learnings; cold rows stay searchable in
 `LEARNINGS.jsonl`/`RECALL.sqlite` instead of being forced into every prompt.
 
@@ -962,12 +1082,18 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 - **Reasoning before verdict.** Justify first, then severity.
 - **Every finding with a reference** (file:line / plan section). No evidence → no finding.
 - **Anti-hallucination:** a false finding is worse than a missed one. Unsure → drop it.
-- **Diverse lenses** (Phase 4): A = goal/completeness/measurability (goal-backward); B = security/edge/error/architecture/over-engineering.
-- **Reviewers write findings to their own files — the gate counts them mechanically (closes self-report + silent-drop).** Each reviewer writes this round's findings to an append-only, orchestrator-immutable file `.kimiflow/<slug>/findings/r<N>-<lens>.md` — one canonical line per finding, at column 0, **no newline in the reason**:
+- **Diverse lenses** (Phase 4): A = goal/completeness/measurability (goal-backward); B = security/edge/error/architecture/over-engineering. (Phase 7 has its own code-review ensemble below.)
+- **Reviewers write findings to their own files — the gate counts them mechanically (closes self-report + silent-drop).** In Phase 4, each reviewer writes this round's findings to an append-only, orchestrator-immutable file `.kimiflow/<slug>/findings/r<N>-<lens>.md` — one canonical line per finding, at column 0, **no newline in the reason**:
   - `FINDING <SEVERITY> <ref> :: <one-line reason>` — `<SEVERITY>` is exactly one of `BLOCKER|HIGH|MEDIUM|LOW`; `<ref>` is `file:line` or `PLAN.md §section`. A reviewer that finds nothing writes the single sentinel line `NONE`.
   - Reviewers do NOT self-report a count; the orchestrator **reads** these files and never edits them — so no finding can be silently dropped or self-resolved.
+- **Mechanical plan-blocker gate (Phase 4, before reviewers).** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/plan-blocker-gate.sh .kimiflow/<slug>` before spawning plan reviewers. The script blocks generic executable-plan failures that reviewers should not have to rediscover: unresolved markers in `PLAN.md`/`ACCEPTANCE.md`, acceptance criteria without `AC-N`, criteria not referenced by `PLAN.md`, missing verification method, missing code/artifact path evidence, and missing affected-file/path declaration. `PLAN_BLOCKER_GATE	OPEN	blockers=0	reason=clean` is required before reviewer round 1. A CLOSED verdict returns to Phase 3; do not spend subagent budget on a plan that is not yet executable.
 - **Gate count (mechanical, current round only) — delegated to the tested resolver.** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/resolve-review-gate.sh .kimiflow/<slug>/findings --round <N> --expect <lensCSV>` (lens set from scope). The script is the **single source of truth**: it validates completeness + canonical grammar, counts open BLOCKER/HIGH, applies anti-oscillation, and echoes one TAB line `VERDICT⇥count⇥reason_code⇥detail`. **Fail-closed:** field 1 `OPEN` opens the gate only on `reason_code=clean`; any `CLOSED` keeps it closed. `reason_code` ∈ {clean,open-findings,incomplete,malformed,oscillation,reappeared,cap-reached} — `oscillation`/`reappeared`/`cap-reached` mean **stop + ask** (not "revise & continue"). It is language-agnostic (reads only `FINDING <SEVERITY> …`); unit-tested by `hooks/test-resolve-review-gate.sh`. The gate never reads `REVIEW.md`.
 - **Resolution = non-recurrence, re-derived by the reviewer (closes self-attestation).** A finding counts as resolved only because the freshly re-spawned reviewer of the next round, re-reviewing the revised `PLAN.md`/diff, **no longer emits it**. The orchestrator never flips a finding's status by its own judgment and never writes a self-supplied "resolved".
+- **Code-review ensemble (Phase 7): candidate-first, orchestrator-verified.** Phase 7 does not rely on one general reviewer. It builds one compact review packet, then sends focused candidates to multiple fresh-context lenses. `small` runs use at least two lenses; add the third for hooks/plugins/memory/launcher/API/contracts/multi-surface/high-risk changes. `large`/release-critical uses all three plus any enabled cross-family knob. Standard lenses:
+  - `bug-regression`: logic, edge cases, acceptance drift, missing or weakened tests.
+  - `failure-security`: input validation, secrets/privacy, paths, rollback/failure atomicity, partial writes.
+  - `integration-contract`: host parity, plugin metadata, installed hooks, launcher/docs wiring, command/API/schema contracts.
+  Each lens writes `.kimiflow/<slug>/code-review-candidates/r<N>-<lens>.md` with one line per issue: `CANDIDATE <SEVERITY> <ref> :: <claim> :: verify=<smallest check>`, or `NONE`. The orchestrator then verifies candidates through targeted reads/commands/reproduction, deduplicates them, records accepted/rejected/unverified candidates in `CODE-REVIEW.md`, and promotes only confirmed findings into `.kimiflow/<slug>/findings/r<N>-code-verified.md` using the canonical `FINDING <SEVERITY> <ref> :: <reason>` format. The resolver gate counts the promoted file, never raw candidates. This keeps the benefit of independent lenses without letting unverified false positives become blockers.
 - **Code-review scope (Phase 7): correctness/requirements/security only, NOT style.** Also check: were tests weakened/deleted to go green? This is **mechanized** by `hooks/test-weakening-scan.sh` (deleted test files, added `.skip`/`xit`/`it.only`/`@Disabled`/`@pytest.mark.skip`/`t.Skip`/`assumeTrue(false)`, removed assertions) → `FLAG` advisories in `.kimiflow/<slug>/ADVISORIES.md`. **Advisories are non-gating** — a separate channel, never counted by the gate grep — and are **surfaced at the commit-gate**, where the human dismisses (legit refactor) or promotes them (fail-closed: an unresolved FLAG blocks the commit). The scan is a **minimum**: semantic weakening (changed expected values, loosened tolerances) is not detected.
 - **Simplicity lens (Phase 7 — slimness as a counter-force, defined once; used folded or dedicated).** A reviewer dimension whose KPI is **"what can be deleted while the `ACCEPTANCE` tests stay green?"** — it makes slimness an active force, not a polite principle. It **FLAGs** (never a gate finding): a new abstraction/layer/option with **<2 real call sites and no written reason** (earn the abstraction: ≥2 callers OR a stated reason); a single-caller pass-through; error-handling for **impossible** states; speculative generality / config nobody asked for. For each, it **proposes the smaller version** (not just "this is complex"). Output rides the **advisory** channel → `.kimiflow/<slug>/ADVISORIES.md`, triaged at the commit-gate (dismiss-with-reason or adopt) — non-gating, so no false-positive thrash, but un-ignorable. Runs **only where a Phase-7 review runs (`small`/`large`)**; `trivial` (no loop, 1–2 files) is exempt. **Token-cheap by default:** at `small` it is **folded into the existing code-reviewer** (no new spawn); a **dedicated, blind prosecutor** runs at `large` (or via the tripwire below). **Size tripwire** — a *changed-line* heuristic that **complements** (does not redefine) the file-count/risk scope tiers: when `git diff --stat` shows a diff **much larger than its scope suggests** (rough guide: a `small` change >~150 changed lines), escalate to the dedicated prosecutor and raise a **STOP+justify** advisory. Orchestrator-read (`git diff --stat`) — no new hook.
 - **Tests are evidence, not the boundary of truth.** Judge against **intent, acceptance, the diff, and actual behavior** — not the test suite alone. Green tests certify only what they assert, not correctness; a green suite may *support* a finding but never *refutes* one grounded in code/spec — "not covered by a test" / "no test fails" is **not** a counter-argument. An **untested real risk is still a finding**, and **missing coverage of a real risk can itself be a finding** — but anti-hallucination still binds: severity = provable impact (HIGH only with a reference + demonstrable impact; a coverage gap with no demonstrable risk → MEDIUM/LOW, or dropped). A finding of this kind names: **reference · violated expectation · impact · why tests miss it** (or why tests are irrelevant here).
@@ -976,7 +1102,7 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 
 **Anti-oscillation (blocker-aware):** compare the open BLOCKER/HIGH set round r→r+1. **Stop + ask with the gate CLOSED** if the open BLOCKER/HIGH count does not strictly decrease across the round, or a finding that had disappeared reappears. The 3-round cap is a hard backstop: the resolver emits `cap-reached` at **`round == cap`** (the cap is the round *limit* — round 3 under `--cap 3`, not round 4) when open findings remain → **stop + ask, gate CLOSED — never auto-proceed.**
 
-**Knob — multi-run verdict (large/critical only):** run the reviewer's binary verdict 3× and take the majority (single-judge verdicts have real run-to-run variance). Not for default `small`.
+**Knob — multi-run verdict (large/critical only):** run the promoted code-review verdict 3× and take the majority (single-judge verdicts have real run-to-run variance). Not for default `small`.
 
 ---
 
@@ -991,7 +1117,7 @@ Each criterion needs three parts plus a test link:
 
 Properties: **observable**, **binary** (pass/fail, not "almost"), **bounded**. Reject criteria without a clean method. **Lint** for vague terms ("fast", "robust", "user-friendly" → quantify) and missing **error/edge** criteria. Trace each to `INTENT.md`/`PROBLEM.md`.
 
-**Coverage check (Phase 4, before the gate):** every criterion → a plan task AND a test; no orphan task without a criterion. Gaps are findings — fix the plan first.
+**Coverage check (Phase 4, before the gate):** every criterion → a plan task AND a test; no orphan task without a criterion. `plan-blocker-gate.sh` catches common unmapped/missing-verification cases before reviewers; remaining gaps are findings — fix the plan first.
 
 **Task interface block (parallel/worktree tasks).** Each PLAN.md task names `Consumes:` (signatures it uses from earlier tasks) and `Produces:` (exact function names + parameter/return types later tasks rely on). A worktree implementer sees only its own task — this block is how it learns neighbor signatures without shared context. Sequential single-implementer runs may omit it.
 
