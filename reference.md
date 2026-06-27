@@ -24,7 +24,7 @@ Kimiflow Start
 
 Projektkarte: standard · aktuell
 Memory: 820/900 Tokens · aktuell
-Effizienz: geschätzt 18% Token Savings · 12 Runs · Sicherheit niedrig
+Effizienz: geschätzt 18% Token Savings · 12 Runs · Konfidenz niedrig
 Offene Findings: 4
 Feature-Check Findings: 1
 Geparkte Runs: 2
@@ -63,7 +63,8 @@ use the current conversation topic only when it is unambiguous; otherwise ask on
 - `kimiflow plan` — clarify + understand + plan + plan-gate, then park/resume, no code.
 - `kimiflow build` — implement an already-approved/prepared plan; if none exists, ask whether to run `full`,
   `plan`, or `quick`.
-- `kimiflow quick` — intentionally lean small/trivial feature/fix path.
+- `kimiflow quick` — intentionally lean small, low-risk feature/fix path. It still runs the mandatory micro-grill
+  unless the request is truly trivial and exact.
 - `kimiflow review` — read-only existing-feature/current-change review, no code.
 - `kimiflow audit` — read-only cleanup/refactoring scan first, no code until a slice is approved.
 - `kimiflow fix` — bug flow with reproduction/Red evidence, root-cause proof, current fix research, and Green
@@ -126,7 +127,8 @@ hygiene pass, not an implementation mode:
   not automatic edits.
 - Natural aliases: show `full`, `grill`, `plan`, `build`, `quick`, `review`, `audit`, and `fix` as shortcuts in
   launcher text. `full` always includes the grill/spec phase and the pre-build approval stop; `grill`, `plan`,
-  `review`, and `audit` are no-code until the user explicitly approves a later build/fix.
+  `review`, and `audit` are no-code until the user explicitly approves a later build/fix. `quick` is lean, not
+  assumption-free: it must run the mandatory micro-grill for small feature/fix work.
 - Memory: list `MEMORY.md` budget, learning counts by status, vault availability, and curation reasons. Offer
   `recall for current task`, `curate index`, `show current learnings`, `back`; do not dump full Vault notes or
   full `LEARNINGS.jsonl`.
@@ -136,9 +138,12 @@ hygiene pass, not an implementation mode:
   `VAULT-SYNC.md` handoff. If `provider.health.status` is `connected_local_only`, offer `Obsidian MCP einrichten`
   and prefer `hooks/vault-mcp-open-terminal.sh --host <current-host>` on macOS, or
   `hooks/vault-mcp-setup.sh --host <current-host> --interactive` as the plain-terminal fallback, so the API key is
-  entered only in the user's Terminal, not chat. If it is `authenticated`, distinguish local REST API validation
-  from actual direct MCP tools before offering targeted Vault prefetch/sync. It does not store an API key in
-  `.kimiflow/` and does not write external Vault notes blindly.
+  entered only in the user's Terminal, not chat. The wizard must explain the normal sequence: enable Obsidian
+  Local REST API, paste the key in the hidden Terminal prompt, validate REST auth, validate `/mcp/` with strict
+  TLS, trust the Obsidian Local REST API certificate in macOS Keychain if HTTPS reports a self-signed certificate,
+  then restart/reload the MCP host so tools are loaded in a fresh session. If it is `authenticated`, distinguish
+  local REST API validation from actual direct MCP tools before offering targeted Vault prefetch/sync. It does not
+  store an API key in `.kimiflow/` and does not write external Vault notes blindly.
 - Vague idea/spec: route to existing Explore/Prepare in V1. Native `--spec` is a follow-up slice, not part of
   launcher V1.
 
@@ -463,11 +468,36 @@ Goal: shared understanding BEFORE research/plan. kimiflow runs the interview **i
 - Concrete and with an example ("More like X or like Y?"), not abstract.
 - Ask **WHAT** and **WHY** (goal, value, boundaries) — not **HOW** (implementation).
 
-**Bounded:** cap **~5 questions**. Priority when tight: **scope > security/privacy > UX > technical details**. Stop when no real ambiguity remains OR the user says "ok". Depth by scope: trivial → none; small → 2–3; large → full. **Terminal state:** write INTENT.md → gate → on to research; do NOT implement.
+**Mandatory micro-grill for small/quick:** small and quick feature/fix runs ask **2–3 targeted questions** before
+research, planning, or implementation. The questions should be cheap to answer and should remove ambiguity in:
+user-visible behavior, in/out-of-scope boundary, and the smallest acceptance/test signal. If the user's initial
+prompt already answers those points, present the inferred answers as **recommended assumptions** and still ask for
+one explicit confirmation ("Passt das so?"). A user answer such as "recommended", "passt", or "mach so" is enough.
+Do not silently skip Phase 1 just because the change is small. The only no-grill exemption is `trivial`: exact
+copy/typo/config-value style changes with no user-visible behavior ambiguity and no plausible scope fork.
+Loose prior discussion is context only: it can make the questions sharper, but it never counts as confirmation.
+Ask or confirm again in the current Kimiflow run.
+
+**Mechanical clarify gate:** `hooks/clarify-gate.sh .kimiflow/<slug>` is the fail-closed Phase-1 check. For
+`small`/`quick`, `INTENT.md`, `PROBLEM.md`, or `AUDIT-INTENT.md` must include one compact marker:
+
+```md
+<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
+```
+
+Use `mode=questions count=2` or `count=3` after actual answers. Use
+`mode=assumptions count=3 confirmed=yes source=current-run` only after the agent restates behavior, scope, and the
+acceptance/test signal and the user explicitly confirms those recommended assumptions in the current run. Never use
+prior loose conversation as the source. The marker is not a user-facing summary; it is the cheap mechanical proof that
+Phase 1 happened now. The plan-blocker gate runs this check again before Plan-gate reviewers, so a skipped small/quick
+micro-grill cannot silently proceed.
+
+**Bounded:** cap **~5 questions**. Priority when tight: **scope > security/privacy > UX > technical details**. Stop when no real ambiguity remains OR the user says "ok". Depth by scope: trivial → none only under the strict exemption; small/quick → mandatory micro-grill 2–3 or explicit confirmation of recommended assumptions in the current run; large → full. **Terminal state:** write INTENT.md → gate → on to research; do NOT implement.
 
 **INTENT.md template** (plain language, NO tech/code):
 ```
 # Intent: <feature in plain words>
+<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
 ## What we're building   (1–3 sentences)
 ## Why / goal            (which problem, for whom, what value)
 ## Out of scope          (deliberately left out)
@@ -519,6 +549,7 @@ For bug fixes this branch replaces the intent/research logic. **Core rule: prove
 **PROBLEM.md (Phase 1, plain language):**
 ```
 # Problem: <bug in plain words>
+<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
 ## Symptom            (error message / crash / wrong behavior)
 ## Expected vs. actual
 ## Reproduction       (steps / inputs / environment; since when? always or intermittent?)
@@ -986,7 +1017,7 @@ repo names, branch names, commit messages, file paths, Vault contents, or raw pr
 local on the user's machine. `memory-router.sh metrics` keeps legacy usage economics at top-level `.economics`,
 returns run-economics at `.run_economics`, and returns the anonymous aggregate at `.global_efficiency`;
 `metrics --global` prints only that aggregate, and `metrics --global-purge` deletes the local global JSONL file.
-The launcher may show a single compact line such as `Effizienz: geschätzt 18% Token Savings · 12 Runs · Sicherheit niedrig`;
+The launcher may show a single compact line such as `Effizienz: geschätzt 18% Token Savings · 12 Runs · Konfidenz niedrig`;
 it must label the value as estimated and must not show it as proven truth.
 older rows are normalized to the current `used_hit_count` heuristic when summaries are calculated so legacy
 `recall_hit_count` estimates cannot inflate savings.
@@ -1013,7 +1044,11 @@ REST API MCP endpoint (`/mcp/`) and recommends `hooks/vault-mcp-open-terminal.sh
 macOS setup, with `hooks/vault-mcp-setup.sh --host <host> --interactive` as the plain-terminal fallback. That
 launcher opens Terminal.app and runs `hooks/vault-mcp-setup.sh --interactive`, where the user pastes the key into
 a hidden terminal prompt; Codex config can be written to user-level `~/.codex/config.toml`, Claude Code can use a
-`headersHelper` script, and the key can live in macOS Keychain or the host environment instead of `.kimiflow/`.
+`headersHelper` script, the key can live in macOS Keychain or the host environment instead of `.kimiflow/`, and
+the wizard verifies both loopback REST auth and MCP initialization. For the default HTTPS endpoint, the MCP check
+uses strict TLS on purpose: if Obsidian's self-signed certificate is not trusted, the wizard prints the local
+certificate URL (`/obsidian-local-rest-api.crt`), macOS Keychain trust steps, and the local-only
+`http://127.0.0.1:27123` fallback instead of writing confusing half-working state.
 Codex uses `bearer_token_env_var = "OBSIDIAN_API_KEY"`, while Claude Code uses a `headersHelper`
 script created by `hooks/vault-mcp-setup.sh` outside the repo. The helper can read `OBSIDIAN_API_KEY` or macOS
 Keychain service `kimiflow.obsidian.api-key` at connection time; it stores no token and refuses non-loopback URLs. `provider
@@ -1085,6 +1120,7 @@ through `consolidate --write`.
 Before researching, recall locally first via `memory-router.sh recall`, then search whatever **optional memory
 providers** are connected — recall beats re-research. Each provider is independent and **graceful**: present →
 use, absent → note in STATE.md + continue (the skill runs identically either way; no provider is ever required).
+`small`/`quick` does **not** skip provider recall; it runs a tiny **Vault Pulse** when a Vault is detectable.
 
 - **Vault** (notes MCP, e.g. Obsidian) — curated research notes. Searched here; **also saved back** at
   Phase 2's end (see "Vault conventions" below).
@@ -1099,14 +1135,24 @@ different vector. **Detection is per-run, by tool availability** (don't hard-pin
 later-added provider is used automatically on the **next run**, once its MCP is loaded in the session
 (restart / `/reload-plugins` after install). None present → codebase + web, unchanged.
 
+**Small/quick Vault Pulse:** run `memory-router.sh provider health` before web/current-source research. If
+`provider.health.direct_search_ready` is true, do one focused Vault search from the current intent/problem terms,
+read at most 3 clearly relevant hits, and summarize only the useful result into `RECALL.md`. If the Vault is
+`connected_local_only`, run `memory-router.sh provider prefetch --query "<key terms>" --write` and treat
+`.kimiflow/project/VAULT-PREFETCH.md` as a local handoff. If the Vault is unavailable, unauthenticated, or has no
+direct search tool, write one compact `vault_pulse: skipped (<health>)` line to `STATE.md`/`RECALL.md` and continue.
+The pulse is mandatory for non-trivial `small`/`quick` runs, but it must stay bounded; do not browse the Vault
+like a second codebase.
+
 ---
 
-## Current-State Gate (Phase 2)
+## Current-State Pulse / Gate (Phase 2)
 
 The current-state gate protects specs and plans from stale model knowledge when the work touches fast-moving
-technology. It is **not** a web crawler and not a blanket research requirement. It is a small mechanical
-resolver that tells the orchestrator when current primary-source evidence is required before finalizing a spec
-or plan.
+technology. `small`/`quick` still runs a tiny **Current-State Pulse**: assess first, then either record that no
+external freshness check is needed (`low`) or fetch one bounded primary source (`medium|high`). It is **not** a
+web crawler and not a blanket research requirement; it is a small mechanical resolver that tells the orchestrator
+when current primary-source evidence is required before finalizing a spec or plan.
 
 Helper:
 
@@ -1132,8 +1178,8 @@ Risk behavior:
 
 | risk | meaning | behavior |
 |---|---|---|
-| `low` | local code/docs work or stable project convention | no current-source check required |
-| `medium` | library/API/tooling may have changed | use fresh memory/vault hit or a short primary-source check |
+| `low` | local code/docs work or stable project convention | write `CURRENT-STATE.md` with `Status: checked` and "no external current-source research needed"; no browsing |
+| `medium` | library/API/tooling may have changed | fresh memory/vault hit or one short primary-source check required before spec/plan finalization |
 | `high` | host/plugin/hook/MCP/marketplace, security/auth/payments/privacy/deployment, external services | primary-source evidence required before spec/plan finalization |
 
 High-risk examples: Codex or Claude Code plugin behavior, hooks, skills, MCP, marketplaces, new/changed SDKs,
@@ -1145,7 +1191,7 @@ auth/security/payment/privacy/deployment flows, App Store/marketplace/release me
 CURRENT_STATE_GATE	OPEN|CLOSED	risk=<risk>	reason=<code>	detail=<detail>
 ```
 
-For `high`, `OPEN` requires a recall artifact with:
+For `medium|high`, `OPEN` requires a recall artifact with:
 
 ```text
 Status: checked
@@ -1161,7 +1207,9 @@ Accepted primary `source_type` values are `official_docs`, `release_notes`, `sch
 
 Gate rule: `CURRENT_STATE_GATE CLOSED` means do not finalize `RESEARCH.md`/`DIAGNOSIS.md`, `PLAN.md`, or a
 spec. Research the current primary source, record the evidence in `CURRENT-STATE.md` or `RECALL.md`, then
-run `verify` again.
+run `verify` again. For `small`/`quick`, keep this to the smallest useful check: usually one official doc,
+release note, schema/manifest, or official GitHub source is enough unless it contradicts memory or the task is
+riskier than scoped.
 
 ---
 
@@ -1206,7 +1254,7 @@ The vault is an **optional** notes MCP (e.g. Obsidian Local REST API's built-in 
 - **Reviewers write findings to their own files — the gate counts them mechanically (closes self-report + silent-drop).** In Phase 4, each reviewer writes this round's findings to an append-only, orchestrator-immutable file `.kimiflow/<slug>/findings/r<N>-<lens>.md` — one canonical line per finding, at column 0, **no newline in the reason**:
   - `FINDING <SEVERITY> <ref> :: <one-line reason>` — `<SEVERITY>` is exactly one of `BLOCKER|HIGH|MEDIUM|LOW`; `<ref>` is `file:line` or `PLAN.md §section`. A reviewer that finds nothing writes the single sentinel line `NONE`.
   - Reviewers do NOT self-report a count; the orchestrator **reads** these files and never edits them — so no finding can be silently dropped or self-resolved.
-- **Mechanical plan-blocker gate (Phase 4, before reviewers).** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/plan-blocker-gate.sh .kimiflow/<slug>` before spawning plan reviewers. The script blocks generic executable-plan failures that reviewers should not have to rediscover: unresolved markers in `PLAN.md`/`ACCEPTANCE.md`, acceptance criteria without `AC-N`, criteria not referenced by `PLAN.md`, missing verification method, missing code/artifact path evidence, and missing affected-file/path declaration. `PLAN_BLOCKER_GATE	OPEN	blockers=0	reason=clean` is required before reviewer round 1. A CLOSED verdict returns to Phase 3; do not spend subagent budget on a plan that is not yet executable.
+- **Mechanical plan-blocker gate (Phase 4, before reviewers).** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/plan-blocker-gate.sh .kimiflow/<slug>` before spawning plan reviewers. The script first re-runs the clarify gate, then blocks generic executable-plan failures that reviewers should not have to rediscover: skipped small/quick micro-grill evidence, unresolved markers in `PLAN.md`/`ACCEPTANCE.md`, acceptance criteria without `AC-N`, criteria not referenced by `PLAN.md`, missing verification method, missing code/artifact path evidence, and missing affected-file/path declaration. `PLAN_BLOCKER_GATE	OPEN	blockers=0	reason=clean` is required before reviewer round 1. A CLOSED verdict returns to Phase 1 or 3, depending on the detail code; do not spend subagent budget on a run that is not yet executable.
 - **Gate count (mechanical, current round only) — delegated to the tested resolver.** The orchestrator runs `${CLAUDE_PLUGIN_ROOT:-$CLAUDE_SKILL_DIR}/hooks/resolve-review-gate.sh .kimiflow/<slug>/findings --round <N> --expect <lensCSV>` (lens set from scope). The script is the **single source of truth**: it validates completeness + canonical grammar, counts open BLOCKER/HIGH, applies anti-oscillation, and echoes one TAB line `VERDICT⇥count⇥reason_code⇥detail`. **Fail-closed:** field 1 `OPEN` opens the gate only on `reason_code=clean`; any `CLOSED` keeps it closed. `reason_code` ∈ {clean,open-findings,incomplete,malformed,oscillation,reappeared,cap-reached} — `oscillation`/`reappeared`/`cap-reached` mean **stop + ask** (not "revise & continue"). It is language-agnostic (reads only `FINDING <SEVERITY> …`); unit-tested by `hooks/test-resolve-review-gate.sh`. The gate never reads `REVIEW.md`.
 - **Resolution = non-recurrence, re-derived by the reviewer (closes self-attestation).** A finding counts as resolved only because the freshly re-spawned reviewer of the next round, re-reviewing the revised `PLAN.md`/diff, **no longer emits it**. The orchestrator never flips a finding's status by its own judgment and never writes a self-supplied "resolved".
 - **Code-review ensemble (Phase 7): candidate-first, orchestrator-verified.** Phase 7 does not rely on one general reviewer. It builds one compact review packet, then sends focused candidates to multiple fresh-context lenses. `small` runs use at least two lenses; add the third for hooks/plugins/memory/launcher/API/contracts/multi-surface/high-risk changes. `large`/release-critical uses all three plus any enabled cross-family knob. Standard lenses:

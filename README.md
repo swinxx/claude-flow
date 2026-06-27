@@ -118,7 +118,8 @@ Each ✋/✅ and the diagnose/commit stop is a real gate, not a prompt suggestio
 | Gate | Phase | Mechanism | Fail-closed? |
 |------|-------|-----------|--------------|
 | **Working-tree start gate** | 0 | `hooks/working-tree-gate.sh` requires a clean repo before new write-mode Kimiflow runs; `.kimiflow/` local state is ignored | ✅ yes |
-| **Plan-blocker gate** | 4 | `hooks/plan-blocker-gate.sh` blocks unresolved markers, unmapped acceptance criteria, missing verification, missing path evidence, and undeclared affected files before reviewers run | ✅ yes |
+| **Clarify gate** | 1/4 | `hooks/clarify-gate.sh` requires small/quick micro-grill evidence; `plan-blocker-gate.sh` rechecks it before reviewers run | ✅ yes |
+| **Plan-blocker gate** | 4 | `hooks/plan-blocker-gate.sh` blocks skipped clarify evidence, unresolved markers, unmapped acceptance criteria, missing verification, missing path evidence, and undeclared affected files before reviewers run | ✅ yes |
 | **Plan-gate** | 4 | `hooks/resolve-review-gate.sh` counts open `BLOCKER/HIGH` over reviewer findings; cap 3; blocker-aware anti-oscillation | ✅ yes |
 | **Red/green fix gate** | 6 | `hooks/red-green-gate.sh` requires `BUG-REPRO.md` with red command/status/output, green command/status/output, and regression evidence before fix-mode review/learning can finish | ✅ yes |
 | **Local diagnostics advisory** | 6/7 | `hooks/lsp-diagnostics.sh` runs bounded existing local typecheck/lint/LSP-adjacent tools or one untracked local `.kimiflow/lsp-diagnostics` command; flags are triaged before commit | advisory |
@@ -150,11 +151,14 @@ kimiflow full    # strict: grill/spec + research + plan-gate, then stop before b
 kimiflow grill   # clarify/spec only; no code
 kimiflow plan    # prepare plan + acceptance criteria; no code
 kimiflow build   # build an approved/prepared plan
-kimiflow quick   # intentionally lean small change
+kimiflow quick   # lean small change, still asks/confirms a few intent questions
 kimiflow review  # read-only feature/current-change review
 kimiflow audit   # read-only cleanup/refactoring scan first
 kimiflow fix     # bug flow with Red/Green evidence
 ```
+
+For `small` and `quick`, kimiflow still runs a short **micro-grill** first: 2–3 cheap questions, or a compact list of recommended assumptions to confirm in the current run. Loose prior discussion is context, not consent. Only truly exact `trivial` changes can skip this.
+`small`/`quick` also check the Vault when one is connected: one bounded **Vault Pulse** before web research, or a graceful skip note when no direct Vault search is available.
 
 In Codex, use the same arguments with `$kimiflow`:
 
@@ -329,7 +333,9 @@ Internal threshold hints such as `many_learnings` stay silent when memory is fre
 
 Scope-gate (`trivial`/`small`/`large`) → **clarify** (plain-language grill / problem clarification) → **understand & research** resp. **diagnose** (reproduce + prove root cause + research the correct fix *before* fixing) → **plan** with testable EARS acceptance criteria → **plan-gate** (2 independent reviewers, binary no-blocker, cap 3) → **implement** (TDD, sequential by default) → **verify** against the criteria (with evidence) → **code-review ensemble** (focused candidate lenses + orchestrator verification) → **commit** (stops for your OK).
 
-State is persisted to `.kimiflow/<slug>/` in the target project (resumable).
+State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `small`/`quick` runs stay lean, but they do not skip Phase 1: kimiflow asks or confirms enough to avoid building the wrong thing.
+`small`/`quick` also run a tiny Current-State Pulse: local-only work records "no external freshness check needed"; changing APIs/tooling/hosts gets one current primary-source check before planning.
+`small`/`quick` also run a tiny Vault Pulse: if Obsidian/Vault direct search is ready, kimiflow looks up the current intent once; if not, it records provider health and continues without blocking.
 
 > **Cost:** a `large` run fans out several subagents (reviewers, implementer, verifier, and optional best-of-N / cross-family reviewer) — expect noticeably higher token use. The scope-gate keeps `trivial` lean, while non-trivial Phase 7 uses a bounded review ensemble over a compact diff packet to avoid repeated full re-reviews.
 
@@ -349,6 +355,7 @@ kimiflow ships safety hooks under `hooks/`, **active only in kimiflow repos** (a
 
 - **`commit-secret-gate`** — **filename/path hygiene, not secret-in-source detection**: blocks a `git commit` that would stage a secret-looking **path** (`.env`/`.envrc` incl. `prod.env`-style suffixes, `*.pem/.key/.p12/.pfx/.asc`, private SSH keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (not `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token` paths) and any bulk `git add -A`/`.`. It matches **paths, never file contents** — a key pasted into source passes — so pair it with a content scanner for in-source secrets. kimiflow's advisory `secret-content-scan.sh` does this: **`gitleaks protect --staged`** is the clean staged-content path; **trufflehog** is a best-effort fallback (no native staged mode — it scans commits since `HEAD`). It also covers the working-tree paths a `git commit -a`/`--all` would auto-stage, but it is **a backstop, not complete secret protection**: an explicit pathspec commit (`git commit <path>`), a command-position-evasion prefix (`env X=y`/`sudo`/`/usr/bin/git`/`command git`), a quoted `-C` path with a space, and an escaped quote in the message are **known, documented gaps** (regex isn't a shell parser — see [reference.md](reference.md) "Commit hygiene"). A global **`git -C <path>`** to another repo **is** honored (the gate scopes to the target, not the cwd). Real coverage = `.gitignore` discipline + a content scanner + not tracking secrets.
 - **`state-gate`** — blocks review-gate resolver calls when a non-trivial kimiflow run has no durable `STATE.md`; this protects resume and gate state from living only in chat.
+- **`clarify-gate`** — blocks `small`/`quick` runs that try to skip the micro-grill; `INTENT.md`/`PROBLEM.md` must show either 2+ answered questions or confirmed recommended assumptions from the current run.
 - **`test-gate`** (opt-in) — blocks finishing while the project's tests are red; enable per project via a **local, untracked** `.kimiflow/test-gate` file (auto-enabled for `large`-scope runs). A git-tracked (committed) marker is refused — its first line is `eval`'d, so committed markers can't run as a drive-by.
 
 ## Vault memory layer (optional, but recommended)
@@ -370,9 +377,16 @@ works without a vault and is the default project-level learning layer.
    ```bash
    hooks/vault-mcp-open-terminal.sh --host codex
    ```
-   On macOS, the wizard writes the user-level Codex MCP config, stores the key in Keychain, sets the launch environment for newly opened Codex, and verifies the loopback Local REST API. For Claude Code use `--host claude`; for both hosts use `--host all`.
+   On macOS, the wizard writes the user-level Codex MCP config, stores the key in Keychain, sets the launch environment for newly opened Codex, verifies the loopback Local REST API, and checks that the MCP endpoint initializes. For Claude Code use `--host claude`; for both hosts use `--host all`.
 4. **Manual/CLI fallback:** run `hooks/vault-mcp-setup.sh --host all --interactive` in your own terminal, or `hooks/vault-mcp-setup.sh --host all` to print Codex and Claude Code snippets for `https://127.0.0.1:27124/mcp/`. It never prints, commits, or stores the API key in `.kimiflow/`.
 5. **Restart/reload your MCP client** and keep **Obsidian running** during a kimiflow run.
+
+**If HTTPS certificate trust fails:** the Local REST API plugin uses a local certificate for
+`https://127.0.0.1:27124`. The wizard detects this and prints the fix. Open/download
+`https://127.0.0.1:27124/obsidian-local-rest-api.crt`, add it to the macOS **System** keychain, open the
+certificate, set SSL trust to **Always Trust**, confirm, then restart Obsidian and Codex/Claude Code. Re-run the
+wizard; a healthy check verifies `/mcp/` without an insecure TLS bypass. If you deliberately do not want to trust
+the certificate, use the local-only fallback `--url http://127.0.0.1:27123`.
 
 The frictionless path is: detect Obsidian → `provider connect` → `provider health` → Terminal setup wizard → local
 `VAULT-PREFETCH.md` / `VAULT-SYNC.md` handoffs. Direct note search/write uses authenticated
@@ -491,7 +505,8 @@ Jedes ✋/✅ sowie der Diagnose- und Commit-Stopp ist ein echtes Gate, kein Pro
 
 | Gate | Phase | Mechanismus | Fail-closed? |
 |------|-------|-------------|--------------|
-| **Planblocker-Gate** | 4 | `hooks/plan-blocker-gate.sh` blockt ungelöste Marker, nicht gemappte Akzeptanzkriterien, fehlende Verifikation, fehlende Pfad-Evidence und nicht deklarierte betroffene Dateien vor den Reviewern | ✅ ja |
+| **Clarify-Gate** | 1/4 | `hooks/clarify-gate.sh` verlangt Micro-Grill-Evidence für small/quick; `plan-blocker-gate.sh` prüft das vor den Reviewern erneut | ✅ ja |
+| **Planblocker-Gate** | 4 | `hooks/plan-blocker-gate.sh` blockt übersprungene Clarify-Evidence, ungelöste Marker, nicht gemappte Akzeptanzkriterien, fehlende Verifikation, fehlende Pfad-Evidence und nicht deklarierte betroffene Dateien vor den Reviewern | ✅ ja |
 | **Plan-Gate** | 4 | `hooks/resolve-review-gate.sh` zählt offene `BLOCKER/HIGH` über die Reviewer-Findings; Cap 3; blocker-aware Anti-Oszillation | ✅ ja |
 | **Code-Review-Gate** | 7 | fokussierte Review-Linsen liefern Kandidaten; der Orchestrator verifiziert und promotet bestätigte Findings; derselbe Resolver zählt offene `BLOCKER/HIGH` | ✅ ja |
 | **Commit-Gate** | 7 | STOP + Advisory-Triage; wartet auf dein explizites OK vor jedem Commit | ✅ ja |
@@ -521,11 +536,14 @@ kimiflow full    # streng: Grill/Spec + Recherche + Plan-Gate, dann Stopp vor Bu
 kimiflow grill   # nur klären/specen; kein Code
 kimiflow plan    # Plan + Akzeptanzkriterien vorbereiten; kein Code
 kimiflow build   # freigegebenen/vorbereiteten Plan bauen
-kimiflow quick   # bewusst schlanke kleine Änderung
+kimiflow quick   # schlanke kleine Änderung, fragt/bestätigt trotzdem kurz die Absicht
 kimiflow review  # read-only Feature-/Diff-Prüfung
 kimiflow audit   # read-only Cleanup-/Refactoring-Scan zuerst
 kimiflow fix     # Bugflow mit Red/Green-Evidenz
 ```
+
+Bei `small` und `quick` macht kimiflow trotzdem einen kurzen **Micro-Grill**: 2–3 günstige Fragen oder eine kompakte Bestätigung empfohlener Annahmen im aktuellen Run. Lose Vorbesprechung ist Kontext, keine Zustimmung. Nur wirklich exakte `trivial`-Änderungen dürfen das überspringen.
+`small`/`quick` schaut außerdem in den Vault, wenn einer verbunden ist: ein begrenzter **Vault Pulse** vor der Web-Recherche oder ein sauberer Skip-Hinweis, wenn keine direkte Vault-Suche verfügbar ist.
 
 In Codex nutzt du dieselben Argumente mit `$kimiflow`:
 
@@ -701,9 +719,11 @@ Schwellen wie `many_learnings` bleiben still, wenn Memory frisch und unter Budge
 
 Scope-Gate (`trivial`/`small`/`large`) → **Klärung** (Grill in einfacher Sprache / Problem-Klärung) → **Verstehen & Recherche** bzw. **Diagnose** (reproduzieren + Root-Cause belegen + korrekten Fix recherchieren *vor* dem Fix) → **Plan** mit testbaren EARS-Akzeptanzkriterien → **Plan-Gate** (2 unabhängige Reviewer, binär kein-Blocker, Cap 3) → **Umsetzung** (TDD, default sequenziell) → **Verifikation** gegen die Kriterien (mit Evidenz) → **Code-Review** → **Commit** (stoppt für dein OK).
 
-State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig).
+State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig). `small`/`quick` bleibt schlank, überspringt aber Phase 1 nicht: kimiflow fragt oder bestätigt genug, damit es nicht am eigentlichen Wunsch vorbeibaut.
+`small`/`quick` macht außerdem einen winzigen Current-State-Pulse: lokale Arbeit dokumentiert "keine externe Aktualitätsprüfung nötig"; geänderte APIs/Tooling/Hosts bekommen vor dem Plan eine aktuelle Primärquelle.
+`small`/`quick` macht außerdem einen winzigen Vault Pulse: ist Obsidian/Vault-Direktsuche bereit, schaut kimiflow einmal zum aktuellen Intent nach; wenn nicht, wird Provider-Health notiert und ohne Blocker weitergearbeitet.
 
-> **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Reviewer, Implementer, Verifier, optional Best-of-N / Cross-Family-Reviewer) — entsprechend höherer Token-Verbrauch. Das Scope-Gate hält `small`/`trivial` schlank (kein Loop, 0–1 Reviewer).
+> **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Reviewer, Implementer, Verifier, optional Best-of-N / Cross-Family-Reviewer) — entsprechend höherer Token-Verbrauch. Das Scope-Gate hält `small` schlank und `trivial` maximal leicht; `small`/`quick` behalten aber den kurzen Micro-Grill.
 
 ## Prinzipien
 
@@ -721,6 +741,7 @@ kimiflow bringt Sicherheits-Hooks unter `hooks/` mit, **nur in kimiflow-Repos ak
 
 - **`commit-secret-gate`** — **Dateiname/Pfad-Hygiene, keine Secret-im-Quelltext-Erkennung**: blockt einen `git commit`, der einen secret-verdächtigen **Pfad** stagen würde (`.env`/`.envrc` inkl. `prod.env`-artiger Suffixe, `*.pem/.key/.p12/.pfx/.asc`, private SSH-Keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (nicht `.pub`), `.npmrc`, `secret`/`credential`/`access_token`/`auth_token`-Pfade), sowie jedes Bulk-`git add -A`/`.`. Er matcht **Pfade, nie Datei-Inhalte** — ein in den Quelltext gepasteter Key passiert — also ergänze ihn mit einem Content-Scanner für Secrets im Code. kimiflows Advisory `secret-content-scan.sh` macht genau das: **`gitleaks protect --staged`** ist der saubere Staged-Content-Pfad; **trufflehog** ist ein Best-effort-Fallback (kein nativer Staged-Mode — scannt Commits seit `HEAD`).
 - **`state-gate`** — blockt Review-Gate-Resolver-Aufrufe, wenn einem nicht-trivialen kimiflow-Lauf die dauerhafte `STATE.md` fehlt; dadurch lebt Resume-/Gate-State nicht nur im Chat.
+- **`clarify-gate`** — blockt `small`/`quick`-Läufe, die den Micro-Grill überspringen wollen; `INTENT.md`/`PROBLEM.md` muss entweder 2+ beantwortete Fragen oder bestätigte empfohlene Annahmen aus dem aktuellen Run belegen.
 - **`test-gate`** (opt-in) — blockt das Beenden, solange die Projekt-Tests rot sind; pro Projekt via **lokaler, untracked** `.kimiflow/test-gate`-Datei aktivieren (für `large`-Läufe automatisch). Ein git-getrackter (committeter) Marker wird abgelehnt — seine erste Zeile wird `eval`'t, committete Marker können so nicht als Drive-by laufen.
 
 ## Vault-Memory-Schicht (optional, aber empfohlen)
@@ -739,9 +760,16 @@ kimiflow kann einen **Obsidian-Vault als projektübergreifende Wissensbasis** nu
    ```bash
    hooks/vault-mcp-open-terminal.sh --host codex
    ```
-   Auf macOS schreibt der Wizard die user-level Codex-MCP-Konfig, speichert den Key im Keychain, setzt die Launch-Umgebung für neu geöffnete Codex-Fenster und prüft die lokale REST API. Für Claude Code nutze `--host claude`; für beide Hosts `--host all`.
+   Auf macOS schreibt der Wizard die user-level Codex-MCP-Konfig, speichert den Key im Keychain, setzt die Launch-Umgebung für neu geöffnete Codex-Fenster, prüft die lokale REST API und testet, ob der MCP-Endpunkt initialisiert. Für Claude Code nutze `--host claude`; für beide Hosts `--host all`.
 4. **Manueller/CLI-Fallback:** `hooks/vault-mcp-setup.sh --host all --interactive` im eigenen Terminal starten, oder `hooks/vault-mcp-setup.sh --host all` nutzen, um Codex- und Claude-Code-Snippets für `https://127.0.0.1:27124/mcp/` zu drucken. Er druckt, committet und speichert den API-Key nie in `.kimiflow/`.
 5. **MCP-Client neu starten/neu laden** und **Obsidian während eines kimiflow-Laufs laufen lassen**.
+
+**Wenn HTTPS-Zertifikatsvertrauen fehlschlägt:** Das Local-REST-API-Plugin nutzt ein lokales Zertifikat für
+`https://127.0.0.1:27124`. Der Wizard erkennt das und zeigt die Lösung. Öffne/lade
+`https://127.0.0.1:27124/obsidian-local-rest-api.crt`, füge es zum macOS-**System**-Schlüsselbund hinzu, öffne
+das Zertifikat, setze SSL-Vertrauen auf **Immer vertrauen**, bestätige, starte Obsidian und Codex/Claude Code neu
+und führe den Wizard erneut aus. Ein gesunder Check verifiziert `/mcp/` ohne unsicheren TLS-Bypass. Wenn du das
+Zertifikat bewusst nicht vertrauen möchtest, nutze den lokalen Fallback `--url http://127.0.0.1:27123`.
 
 Der frictionless Pfad ist: Obsidian erkennen → `provider connect` → `provider health` → Terminal-Setup-Wizard → lokale
 `VAULT-PREFETCH.md` / `VAULT-SYNC.md`-Handoffs schreiben. Direkte Notizsuche/-writes nutzen

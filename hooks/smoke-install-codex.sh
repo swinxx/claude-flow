@@ -66,6 +66,14 @@ for term in 'kimiflow full' 'kimiflow grill' 'kimiflow plan' 'kimiflow build' 'k
   grep -q "$term" "$ROOT/README.md" && ok "README documents mode alias: $term" || bad "README missing mode alias: $term"
 done
 grep -q 'pre-build approval stop' "$ROOT/SKILL.md" && ok "full mode includes pre-build approval stop" || bad "full mode missing pre-build approval stop"
+grep -q 'mandatory micro-grill' "$ROOT/SKILL.md" && ok "canonical skill requires micro-grill for small/quick" || bad "canonical skill missing small/quick micro-grill"
+grep -q 'mandatory micro-grill' "$SKILL" && ok "Codex wrapper preserves small/quick micro-grill" || bad "Codex wrapper missing small/quick micro-grill"
+grep -q 'Mandatory micro-grill for small/quick' "$ROOT/reference.md" && ok "reference documents small/quick micro-grill" || bad "reference missing small/quick micro-grill"
+grep -q 'Micro-Grill' "$ROOT/README.md" && ok "README documents small/quick micro-grill" || bad "README missing small/quick micro-grill"
+grep -q 'Vault Pulse' "$ROOT/SKILL.md" && ok "canonical skill requires small/quick Vault Pulse" || bad "canonical skill missing small/quick Vault Pulse"
+grep -q 'Vault Pulse' "$SKILL" && ok "Codex wrapper preserves small/quick Vault Pulse" || bad "Codex wrapper missing small/quick Vault Pulse"
+grep -q 'Small/quick Vault Pulse' "$ROOT/reference.md" && ok "reference documents small/quick Vault Pulse" || bad "reference missing small/quick Vault Pulse"
+grep -q 'Vault Pulse' "$ROOT/README.md" && ok "README documents small/quick Vault Pulse" || bad "README missing small/quick Vault Pulse"
 if grep -q 'kimiflow grill.*no code' "$ROOT/reference.md" \
   && grep -q 'kimiflow plan.*no code' "$ROOT/reference.md" \
   && grep -q 'kimiflow review.*no code' "$ROOT/reference.md" \
@@ -89,6 +97,8 @@ if [ -x "$ROOT/hooks/current-state-gate.sh" ] && bash -n "$ROOT/hooks/current-st
 if [ -x "$ROOT/hooks/test-current-state-gate.sh" ] && bash -n "$ROOT/hooks/test-current-state-gate.sh" 2>/dev/null; then ok "current-state gate test ok"; else bad "current-state gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/working-tree-gate.sh" ] && bash -n "$ROOT/hooks/working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate helper ok"; else bad "working-tree gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-working-tree-gate.sh" ] && bash -n "$ROOT/hooks/test-working-tree-gate.sh" 2>/dev/null; then ok "working-tree gate test ok"; else bad "working-tree gate test missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/clarify-gate.sh" ] && bash -n "$ROOT/hooks/clarify-gate.sh" 2>/dev/null; then ok "clarify gate helper ok"; else bad "clarify gate helper missing/not-exec/bad"; fi
+if [ -x "$ROOT/hooks/test-clarify-gate.sh" ] && bash -n "$ROOT/hooks/test-clarify-gate.sh" 2>/dev/null; then ok "clarify gate test ok"; else bad "clarify gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate helper ok"; else bad "plan-blocker gate helper missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/test-plan-blocker-gate.sh" ] && bash -n "$ROOT/hooks/test-plan-blocker-gate.sh" 2>/dev/null; then ok "plan-blocker gate test ok"; else bad "plan-blocker gate test missing/not-exec/bad"; fi
 if [ -x "$ROOT/hooks/red-green-gate.sh" ] && bash -n "$ROOT/hooks/red-green-gate.sh" 2>/dev/null; then ok "red-green gate helper ok"; else bad "red-green gate helper missing/not-exec/bad"; fi
@@ -104,6 +114,7 @@ if [ -x "$ROOT/hooks/test-vault-mcp-open-terminal.sh" ] && bash -n "$ROOT/hooks/
 grep -q 'project-map-status.sh' "$ROOT/reference.md" && ok "canonical project-map status helper documented" || bad "canonical project-map status helper missing"
 grep -q 'current-state-gate.sh' "$ROOT/reference.md" && ok "canonical current-state gate helper documented" || bad "canonical current-state gate helper missing"
 grep -q 'working-tree-gate.sh' "$ROOT/reference.md" && ok "canonical working-tree gate helper documented" || bad "canonical working-tree gate helper missing"
+grep -q 'clarify-gate.sh' "$ROOT/reference.md" && ok "canonical clarify gate helper documented" || bad "canonical clarify gate helper missing"
 grep -q 'plan-blocker-gate.sh' "$ROOT/reference.md" && ok "canonical plan-blocker gate helper documented" || bad "canonical plan-blocker gate helper missing"
 grep -q 'red-green-gate.sh' "$ROOT/reference.md" && ok "canonical red-green gate helper documented" || bad "canonical red-green gate helper missing"
 grep -q 'BUG-REPRO.md' "$ROOT/reference.md" && ok "canonical BUG-REPRO evidence documented" || bad "canonical BUG-REPRO evidence missing"
@@ -114,6 +125,7 @@ grep -q 'background-run.sh' "$ROOT/reference.md" && ok "canonical background han
 grep -q 'Background Handles' "$ROOT/README.md" && ok "README documents Background Handles" || bad "README missing Background Handles"
 grep -q 'current-state-gate.sh' "$SKILL" && ok "Codex wrapper maps current-state gate helper" || bad "Codex wrapper missing current-state gate helper"
 grep -q 'working-tree-gate.sh' "$SKILL" && ok "Codex wrapper maps working-tree gate helper" || bad "Codex wrapper missing working-tree gate helper"
+grep -q 'clarify-gate.sh' "$SKILL" && ok "Codex wrapper maps clarify gate helper" || bad "Codex wrapper missing clarify gate helper"
 grep -q 'plan-blocker-gate.sh' "$SKILL" && ok "Codex wrapper maps plan-blocker gate helper" || bad "Codex wrapper missing plan-blocker gate helper"
 grep -q 'red-green-gate.sh' "$SKILL" && ok "Codex wrapper maps red-green gate helper" || bad "Codex wrapper missing red-green gate helper"
 grep -q 'lsp-diagnostics.sh' "$SKILL" && ok "Codex wrapper maps local diagnostics helper" || bad "Codex wrapper missing local diagnostics helper"
@@ -129,7 +141,7 @@ grep -q 'code-verified' "$ROOT/reference.md" && ok "canonical promoted code-revi
 grep -q 'Review Ensemble' "$SKILL" && ok "Codex wrapper maps code-review ensemble" || bad "Codex wrapper missing code-review ensemble mapping"
 grep -q 'potentially_stale' "$ROOT/reference.md" && ok "per-section staleness documented" || bad "per-section staleness missing"
 grep -q 'phase2_depth' "$ROOT/reference.md" && ok "adaptive map coverage depth documented" || bad "adaptive map coverage depth missing"
-for term in MEMORY.md USER.md LEARNINGS.jsonl USER.jsonl MEMORY-INDEX.json MEMORY-USAGE.json RECALL.sqlite RECALL.md RUN-HISTORY.json VAULT-PROVIDER.json VAULT-PREFETCH.md VAULT-SYNC.md SKILL-DRAFTS PENDING-PROPOSALS.md PROPOSALS.jsonl LEARNING-REVIEW.md review-run verify-run 'history --query' metrics 'provider status' 'provider health' 'provider setup' 'provider detect' 'provider sync' 'vault-mcp-setup.sh' 'vault-mcp-open-terminal.sh' '--interactive' bearer_token_env_var headersHelper 'index --write' 'consolidate --write' 'propose --write' '--approve' '--reject' '--apply' evidence_fingerprints 'Learning quality gate' 'Source freshness gate' provider_sync_pending provider_detected_unconfigured provider_auth_required provider_auth_failed connected_local_only authenticated auth_failed; do
+for term in MEMORY.md USER.md LEARNINGS.jsonl USER.jsonl MEMORY-INDEX.json MEMORY-USAGE.json RECALL.sqlite RECALL.md RUN-HISTORY.json VAULT-PROVIDER.json VAULT-PREFETCH.md VAULT-SYNC.md SKILL-DRAFTS PENDING-PROPOSALS.md PROPOSALS.jsonl LEARNING-REVIEW.md review-run verify-run 'history --query' metrics 'provider status' 'provider health' 'provider setup' 'provider detect' 'provider sync' 'Vault Pulse' 'vault-mcp-setup.sh' 'vault-mcp-open-terminal.sh' '--interactive' bearer_token_env_var headersHelper 'index --write' 'consolidate --write' 'propose --write' '--approve' '--reject' '--apply' evidence_fingerprints 'Learning quality gate' 'Source freshness gate' provider_sync_pending provider_detected_unconfigured provider_auth_required provider_auth_failed connected_local_only authenticated auth_failed; do
   grep -q -- "$term" "$ROOT/reference.md" && ok "memory artifact documented: $term" || bad "memory artifact missing: $term"
 done
 for term in 'Storage targets' 'kimiflow+vault' 'repo-docs' 'IMPROVEMENTS.md' 'DOCS-PLAN.md'; do
