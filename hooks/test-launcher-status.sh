@@ -86,6 +86,13 @@ out="$(run_status)"
 assert_jq "$out" '.project_map.present == true and .project_map.depth == "standard" and .project_map.status == "current"' "current_map_reports_current"
 assert_jq "$out" '.repo.dirty == false' "ignored_kimiflow_does_not_dirty_repo"
 assert_jq "$out" '.maintenance.bring_current_recommended == false and .maintenance.commits_since_project_map_baseline == 0' "clean_current_repo_no_maintenance_recommended"
+assert_jq "$out" '.agentic_readiness.status == "readiness_status" and (.agentic_readiness.summary | test("Agentic readiness:")) and .agentic_readiness.privacy.network_calls == false' "agentic_readiness_visible"
+pretty_out="$("$SCRIPT" --root "$REPO" --pretty)"
+if printf '%s\n' "$pretty_out" | grep -Fq "Agentic readiness:"; then
+  pass "agentic_readiness_pretty_summary_visible"
+else
+  fail "agentic_readiness_pretty_summary_visible"
+fi
 
 printf '# Docs\nmore\n' > "$REPO/docs/guide.md"
 ( cd "$REPO" && git add docs/guide.md && git commit -q -m docs )

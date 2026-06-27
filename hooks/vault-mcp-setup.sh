@@ -243,6 +243,22 @@ verify_local_rest_api() {
   esac
 }
 
+mcp_initialize_advertises_tools() {
+  need_jq
+  awk '
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      if (line ~ /^data:[[:space:]]*/) {
+        sub(/^data:[[:space:]]*/, "", line)
+        if (line != "" && line != "[DONE]") print line
+        next
+      }
+      if (line ~ /^[[:space:]]*[\{\[]/) print line
+    }
+  ' | jq -e -s --arg protocol "$mcp_protocol_version" 'any(.[]; (.error? == null) and (.jsonrpc == "2.0") and (.id == 1) and (.result.protocolVersion == $protocol) and (.result.capabilities.tools? != null))' >/dev/null 2>&1
+}
+
 print_certificate_trust_guide() {
   local cert_url="$url/obsidian-local-rest-api.crt"
   cat <<EOF
@@ -268,6 +284,7 @@ EOF
 verify_mcp_endpoint() {
   local token escaped_token body err_file status payload mcp_url
   command -v curl >/dev/null 2>&1 || die "curl is required for --verify" 2
+  need_jq
   token="$(read_token)" || die "missing valid token for --verify; run --store-keychain first or set OBSIDIAN_API_KEY" 2
   escaped_token="$(printf '%s' "$token" | sed 's/\\/\\\\/g; s/"/\\"/g')"
   token=""
@@ -298,7 +315,7 @@ verify_mcp_endpoint() {
     die "Obsidian MCP endpoint did not respond at $mcp_url" 1
   fi
   rm -f "$err_file"
-  if printf '%s\n' "$body" | grep -Fq '"capabilities"' && printf '%s\n' "$body" | grep -Fq '"tools"'; then
+  if printf '%s\n' "$body" | mcp_initialize_advertises_tools; then
     printf 'Verified Obsidian MCP endpoint: %s\n' "$mcp_url"
   else
     die "Obsidian MCP endpoint responded, but did not advertise MCP tools; keep Obsidian running and verify the Local REST API plugin." 1

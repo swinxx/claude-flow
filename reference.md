@@ -13,7 +13,7 @@ requests.
 
 **Mechanical snapshot:** before showing options, run `hooks/launcher-status.sh --pretty` from the installed
 Kimiflow root (Codex: with `KIMIFLOW_HOST=codex`). The script is read-only and returns JSON for:
-repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, background handles (`total`, status counts, collectable/stale counts, items), open findings,
+repo status, dirty working tree, project-map depth/status, memory/recall status, curation needs, agentic readiness, background handles (`total`, status counts, collectable/stale counts, items), open findings,
 open feature-check findings, open improvement slices, repo-doc presence, active-session status, and active/backlog/done runs. The orchestrator may summarize this
 JSON, but must not invent counts.
 
@@ -32,6 +32,7 @@ Repo-Doku: vorhanden
 Working Tree: geändert
 Aktive Session: offen · Items 2 · aktuell
 Background: 2 einsammelbar · 1 stale
+Agentic Readiness: governed · 0 Blocker · 1 Hinweis
 
 Was willst du tun?
 
@@ -287,6 +288,65 @@ memory rows, project-map facts, or canonical findings by itself.
 `collect` verdict is `OPEN`, not merely handles with `ready`/`finished` status; `stale` also includes drift detected
 during list-time collection checks. `background_handles_collectable` and `background_handles_stale` appear as
 maintenance reasons.
+
+---
+
+## Agentic Readiness Layer
+
+The Agentic Readiness Layer is a local preflight for more autonomous work. It does not make Kimiflow more
+complicated for the user; it gives the orchestrator one small, mechanical signal before trusting background
+results, fanning out workers that may apply changes, resuming parked plans, or handing compact context to reviewers.
+
+**Helper:** `hooks/agentic-readiness.sh`
+
+Commands:
+
+```bash
+hooks/agentic-readiness.sh status [--root <path>] [--run .kimiflow/<slug>] [--pretty]
+hooks/agentic-readiness.sh gate --run .kimiflow/<slug> [--root <path>] [--min-level guided|agentic|governed|autonomous]
+hooks/agentic-readiness.sh packet --run .kimiflow/<slug> --kind plan|review|background|handoff [--root <path>] --write
+```
+
+**Status:** returns `.agentic_readiness` in the launcher snapshot with a compact readiness level:
+
+- `guided` — a blocker exists; the agent must stay guided and fix/revalidate first.
+- `governed` — no blocker, but warnings such as no direct MCP tools or missing active-session context exist.
+- `autonomous` — no local blockers or warnings found.
+
+Current blockers include dirty working tree, active-session stale revalidation, stale background handles,
+current-state gate closure, and missing required helpers. Warnings include missing active session and lack of
+direct authenticated MCP tools. The signal is intentionally conservative and local.
+
+**No-network contract:** `status` and `gate` read only local artifacts and local helper outputs. They must not call
+`memory-router.sh provider health`, direct Vault tools, `curl`, web research, or other network probes. They may read
+the local `.kimiflow/project/VAULT-PROVIDER.json` manifest to distinguish "configured" from "direct MCP ready",
+but a manifest containing optimistic capability text is not enough; direct readiness needs structured capability
+fields. This prevents a launcher/status check from becoming a hidden external operation.
+
+**Gate:** prints one stable line:
+
+```text
+AGENTIC_READINESS_GATE<TAB>OPEN|CLOSED<TAB>level=<level><TAB>min=<level><TAB>reason=<code><TAB>detail=<summary>
+```
+
+Use it before applying background output, autonomous continuation, prepared-plan reuse, or worker fan-out that may
+apply changes. Read-only review fan-out can use `status`/`packet` without requiring an open gate, because the current
+diff is intentionally dirty during review. The default minimum is `governed`; high-risk/release work may require
+`autonomous`. A `CLOSED` verdict means fix the named blocker or ask the user; do not override it with model judgment.
+
+**Context packets:** `packet --write` writes bounded, sanitized packets under
+`.kimiflow/<slug>/context-packets/`. Packets are for reviewer/background/handoff context, not a new source of
+truth. They include selected run artifacts, cap output size at `${KIMIFLOW_AGENTIC_PACKET_MAX_BYTES:-12000}`, redact
+obvious tokens/API keys/bearer strings, replace the user's home path with `~`, reject traversal/symlink escapes, and
+store only repo-relative packet paths in machine output.
+
+**Audit trail:** `gate` and `packet` append `.kimiflow/<slug>/AGENTIC-AUDIT.jsonl` with timestamp, action, level,
+blockers, warnings, run path, and minimal extra metadata. This is local run evidence for "why did Kimiflow trust or
+refuse this handoff?", not user-facing noise.
+
+**Launcher:** `launcher-status.sh` embeds the helper output at `.agentic_readiness` and may show one compact line
+(`Agentic readiness: governed · blockers 0 · warnings 1`). It should not add noisy maintenance tasks for normal
+warnings; use drilldown only when the user asks or a blocker prevents a selected action.
 
 ---
 

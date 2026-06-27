@@ -2,7 +2,7 @@
   "name": "kimiflow",
   "interface": {
     "displayName": "kimiflow",
-    "shortDescription": "Kimiflow full/grill/plan/build/quick/review/audit/fix modes, mandatory small/quick micro-grill, gates, memory, and background handles for Codex"
+    "shortDescription": "Kimiflow full/grill/plan/build/quick/review/audit/fix modes, mandatory micro-grill, gates, memory, background handles, and agentic readiness for Codex"
   },
   "plugins": [
     {

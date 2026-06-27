@@ -119,6 +119,14 @@ if [ "$config_stdin" -eq 1 ]; then
         printf 'curl: (60) SSL certificate problem: self signed certificate\n' >&2
         exit 60
       fi
+      if [ "${KIMIFLOW_FAKE_MCP_ERROR_WORDS:-0}" = "1" ]; then
+        printf '{"error":{"capabilities":"not initialized","tools":"not advertised"}}\n'
+        exit 0
+      fi
+      if [ "${KIMIFLOW_FAKE_MCP_WRONG_PROTOCOL_WITH_TOOLS:-0}" = "1" ]; then
+        printf '{"result":{"protocolVersion":"1900-01-01","capabilities":{"tools":{"listChanged":true}}},"jsonrpc":"2.0","id":1}\n'
+        exit 0
+      fi
       case "$data" in
         *'"protocolVersion":"2025-11-25"'*) ;;
         *) printf '{"error":{"code":-32602,"message":"wrong protocol version"}}\n'; exit 0 ;;
@@ -129,7 +137,7 @@ if [ "$config_stdin" -eq 1 ]; then
       esac
       case "$config" in
         *"Authorization: Bearer fixture-token"*)
-          printf 'event: message\ndata: {"result":{"capabilities":{"tools":{"listChanged":true}}},"jsonrpc":"2.0","id":1}\n'
+          printf 'event: message\ndata: {"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}}},"jsonrpc":"2.0","id":1}\n'
           exit 0
           ;;
       esac
@@ -145,6 +153,14 @@ out="$(OBSIDIAN_API_KEY=fixture-token PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-
 contains "$out" "Verified Obsidian Local REST API auth: HTTP 204" "setup_verify_checks_local_rest_api"
 contains "$out" "Verified Obsidian MCP endpoint: https://127.0.0.1:27124/mcp/" "setup_verify_checks_mcp_endpoint"
 not_contains "$out" "fixture-token" "setup_verify_does_not_echo_token"
+
+out="$(OBSIDIAN_API_KEY=fixture-token KIMIFLOW_FAKE_MCP_ERROR_WORDS=1 PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1 || true)"
+contains "$out" "Obsidian MCP endpoint responded, but did not advertise MCP tools" "setup_verify_rejects_error_payload_with_keywords"
+not_contains "$out" "Verified Obsidian MCP endpoint" "setup_verify_does_not_accept_error_payload_with_keywords"
+
+out="$(OBSIDIAN_API_KEY=fixture-token KIMIFLOW_FAKE_MCP_WRONG_PROTOCOL_WITH_TOOLS=1 PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1 || true)"
+contains "$out" "Obsidian MCP endpoint responded, but did not advertise MCP tools" "setup_verify_rejects_wrong_protocol_with_tools"
+not_contains "$out" "Verified Obsidian MCP endpoint" "setup_verify_does_not_accept_wrong_protocol_with_tools"
 
 out="$(OBSIDIAN_API_KEY=fixture-token KIMIFLOW_MCP_PROTOCOL_VERSION=2024-11-05 PATH="$WORK/bin:$PATH" "$ROOT/hooks/vault-mcp-setup.sh" --host codex --url https://127.0.0.1:27124 --data-dir "$WORK" --verify 2>&1 || true)"
 contains "$out" "Obsidian MCP endpoint responded, but did not advertise MCP tools" "setup_verify_rejects_stale_mcp_protocol"

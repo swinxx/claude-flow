@@ -288,6 +288,16 @@ default_background_json() {
   }'
 }
 
+default_agentic_readiness_json() {
+  jq -nc '{
+    schema_version: 1,
+    status: "unavailable",
+    summary: "Agentic readiness: unavailable",
+    readiness: {level: "guided", confidence: "none", blockers: [], warnings: ["helper_missing"]},
+    privacy: {stores_secrets: false, stores_prompts: false, local_only: true, network_calls: false}
+  }'
+}
+
 ROOT=""
 PRETTY=0
 while [ "$#" -gt 0 ]; do
@@ -489,6 +499,19 @@ if [ -x "$SCRIPT_DIR/background-run.sh" ]; then
   fi
 fi
 
+AGENTIC_READINESS_JSON="$(default_agentic_readiness_json)"
+if [ -x "$SCRIPT_DIR/agentic-readiness.sh" ]; then
+  active_run_for_readiness="$(printf '%s\n' "$ACTIVE_SESSION_JSON" | jq -r '.run // ""' 2>/dev/null || true)"
+  if [ -n "$active_run_for_readiness" ] && [ "$active_run_for_readiness" != "null" ]; then
+    maybe_agentic_json="$(KIMIFLOW_HOST="${KIMIFLOW_HOST:-}" "$SCRIPT_DIR/agentic-readiness.sh" status --root "$ROOT" --run "$active_run_for_readiness" 2>/dev/null || true)"
+  else
+    maybe_agentic_json="$(KIMIFLOW_HOST="${KIMIFLOW_HOST:-}" "$SCRIPT_DIR/agentic-readiness.sh" status --root "$ROOT" 2>/dev/null || true)"
+  fi
+  if printf '%s\n' "$maybe_agentic_json" | jq -e . >/dev/null 2>&1; then
+    AGENTIC_READINESS_JSON="$maybe_agentic_json"
+  fi
+fi
+
 MAINTENANCE_REASONS='[]'
 if [ "$DIRTY" = true ]; then
   MAINTENANCE_REASONS="$(json_append_string "$MAINTENANCE_REASONS" "working_tree_dirty")"
@@ -570,6 +593,7 @@ out="$(jq -n \
   --argjson memory_summary "$MEMORY_SUMMARY_JSON" \
   --argjson active_session "$ACTIVE_SESSION_JSON" \
   --argjson background "$BACKGROUND_JSON" \
+  --argjson agentic_readiness "$AGENTIC_READINESS_JSON" \
   '{
     schema_version: 1,
     repo: {present: $repo_present, root: $root, head: $head, dirty: $dirty},
@@ -579,6 +603,7 @@ out="$(jq -n \
     efficiency: ($memory.global_efficiency // {enabled: true, present: false, path: "~/.kimiflow/metrics/token-economics.jsonl", scope: "global_local_anonymous", runs_tracked: 0, projects_tracked: 0, confidence: "none", verdict: "no_data", estimated_savings_percent: null, action_required: false, privacy: {local_only: true, stores_content: false, stores_paths: false, stores_repo_name: false, stores_prompts: false, project_id_salted_hash: true}}),
     active_session: $active_session,
     background: $background,
+    agentic_readiness: $agentic_readiness,
     findings: {open: $findings_open, path: $findings_path},
     feature_checks: {runs: $feature_check_runs, verified_findings_open: $feature_check_findings_open, path_pattern: $feature_check_path_pattern},
     improvements: {open: $improvements_open, path: $improvements_path},
