@@ -148,10 +148,10 @@ fi
 
 risk="$(jq -r '.current_state_risk // "unknown"' "$ASSESSMENT" 2>/dev/null)"
 case "$risk" in
-  low|medium)
+  low)
     emit_verdict OPEN "$risk" not-required "current-state check not required"
     ;;
-  high)
+  medium|high)
     ;;
   *)
     emit_verdict CLOSED "$risk" malformed-assessment "missing current_state_risk"

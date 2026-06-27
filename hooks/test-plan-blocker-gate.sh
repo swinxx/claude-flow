@@ -37,6 +37,7 @@ Phase 4: open
 EOF
   cat > "$RUN/INTENT.md" <<'EOF'
 # Intent
+<!-- kimiflow:clarify-evidence mode=questions count=2 confirmed=yes source=current-run -->
 Build a small feature with observable output.
 EOF
   cat > "$RUN/RESEARCH.md" <<'EOF'
@@ -87,6 +88,38 @@ Check: automated test feature_acceptance_test (exit 0) -> AC-1
 EOF
 out="$(run_gate)"
 assert_field "$out" 2 OPEN "multiline_acceptance_with_check_opens"
+
+reset_run
+sed '/kimiflow:clarify-evidence/d' "$RUN/INTENT.md" > "$RUN/INTENT.tmp" && mv "$RUN/INTENT.tmp" "$RUN/INTENT.md"
+out="$(run_gate)"
+assert_field "$out" 2 CLOSED "plan_gate_requires_small_micro_grill"
+assert_contains "$out" "clarify_gate_closed:micro_grill_evidence_missing" "plan_gate_requires_small_micro_grill_detail"
+
+reset_run
+FAKE_HOOKS="$WORK/fake-hooks"
+mkdir -p "$FAKE_HOOKS"
+cp "$SCRIPT" "$FAKE_HOOKS/plan-blocker-gate.sh"
+cat > "$FAKE_HOOKS/clarify-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'not a gate verdict\n'
+EOF
+chmod +x "$FAKE_HOOKS/plan-blocker-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+out="$("$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "plan_gate_blocks_malformed_clarify_output"
+assert_contains "$out" "clarify_gate_malformed" "plan_gate_blocks_malformed_clarify_detail"
+
+reset_run
+FAKE_HOOKS="$WORK/fake-hooks-error"
+mkdir -p "$FAKE_HOOKS"
+cp "$SCRIPT" "$FAKE_HOOKS/plan-blocker-gate.sh"
+cat > "$FAKE_HOOKS/clarify-gate.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+chmod +x "$FAKE_HOOKS/plan-blocker-gate.sh" "$FAKE_HOOKS/clarify-gate.sh"
+out="$("$FAKE_HOOKS/plan-blocker-gate.sh" "$RUN")"
+assert_field "$out" 2 CLOSED "plan_gate_blocks_clarify_crash"
+assert_contains "$out" "clarify_gate_error" "plan_gate_blocks_clarify_crash_detail"
 
 reset_run
 printf '\n- TODO: choose the real implementation later.\n' >> "$RUN/PLAN.md"

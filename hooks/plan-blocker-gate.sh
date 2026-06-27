@@ -11,6 +11,7 @@
 # a plan is good; it blocks plans that are not implementable/verifiable enough to
 # deserve an expensive reviewer round.
 set -u
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 emit() {
   printf 'PLAN_BLOCKER_GATE\t%s\tblockers=%s\treason=%s\tdetail=%s\n' "$1" "$2" "$3" "${4:-}"
@@ -111,6 +112,27 @@ require_file "$intent" intent_missing >/dev/null || true
 require_file "$understanding" understanding_missing >/dev/null || true
 require_file "$plan" plan_missing >/dev/null || true
 require_file "$acceptance" acceptance_missing >/dev/null || true
+
+clarify_gate="$SCRIPT_DIR/clarify-gate.sh"
+if [ -x "$clarify_gate" ]; then
+  clarify_out="$("$clarify_gate" "$run_dir" 2>/dev/null)"
+  clarify_rc=$?
+  clarify_status="$(printf '%s\n' "$clarify_out" | cut -f2)"
+  clarify_detail="$(printf '%s\n' "$clarify_out" | cut -f5 | sed 's/^detail=//')"
+  case "$clarify_status" in
+    OPEN) ;;
+    CLOSED) add_blocker "clarify_gate_closed:${clarify_detail:-unknown}" ;;
+    *)
+      if [ "$clarify_rc" -ne 0 ]; then
+        add_blocker "clarify_gate_error"
+      else
+        add_blocker "clarify_gate_malformed"
+      fi
+      ;;
+  esac
+else
+  add_blocker "clarify_gate_missing"
+fi
 
 if [ -f "$plan" ]; then
   if grep -Eiq '\b(TBD|TODO|FIXME|NEEDS CLARIFICATION|OPEN QUESTION|NOT VERIFIED|UNKNOWN)\b' "$plan"; then

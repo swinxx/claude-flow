@@ -55,9 +55,18 @@ assert_assess "Implement Stripe payment auth deployment SDK flow" "high" "high_s
 assert_assess "Update React dependency usage for new framework API" "medium" "medium_library_api_surface"
 
 HIGH='{"schema_version":1,"current_state_risk":"high"}'
+MEDIUM='{"schema_version":1,"current_state_risk":"medium"}'
 LOW='{"schema_version":1,"current_state_risk":"low"}'
 
 assert_verify "$LOW" "" "OPEN" "verify_low_opens_without_recall"
+assert_verify "$MEDIUM" "# Recall" "CLOSED" "verify_medium_closes_without_checked_source"
+assert_verify "$MEDIUM" "# Recall
+
+Status: checked
+
+- source_type: official_docs
+  source_url: https://react.dev/reference/react
+  summary: Current API behavior checked." "OPEN" "verify_medium_opens_with_primary_source"
 assert_verify "$HIGH" "# Recall" "CLOSED" "verify_high_closes_without_checked_source"
 assert_verify "$HIGH" "# Recall
 
