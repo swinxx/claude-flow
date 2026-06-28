@@ -4,6 +4,19 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.46
+
+Fix the **false agentic-readiness MCP warning**; ship Claude Obsidian MCP auto-setup.
+
+### Fixed
+- `agentic-readiness.sh` surfaced `mcp_not_direct_ready` even when an authenticated Obsidian/Vault MCP was
+  connected, because it read only the static `.kimiflow/project/VAULT-PROVIDER.json` — which `provider connect`
+  writes without live capabilities. It now honors the local `KIMIFLOW_VAULT_MCP_AVAILABLE` /
+  `KIMIFLOW_OBSIDIAN_MCP_AVAILABLE` session signal (env only, no network), matching the precedence already used in
+  `memory-router.sh` provider auth, so a connected host MCP clears the false warning.
+
 ### Changed
 - The Obsidian Vault MCP wizard (`vault-mcp-setup.sh --host claude --write-config`, used by the interactive
   `vault-mcp-open-terminal.sh` flow) now applies the Claude Code MCP server automatically via `claude mcp add-json`
