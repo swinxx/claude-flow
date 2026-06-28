@@ -294,7 +294,7 @@ ensure_regular_file_target() {
 }
 
 cmd_start() {
-  local root="" kind="" title="" write=0 pretty=0 affected_lines="" affected_json id dir now base status handoff
+  local root="" kind="" title="" write=0 pretty=0 affected_lines="" affected_json id dir now base status
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --root) shift; root="${1:-}" ;;

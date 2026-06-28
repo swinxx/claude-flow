@@ -85,7 +85,7 @@ manifest_path() {
 
 flow_path() {
   case "$1" in
-    *route*|*routes*|*api*|*schema*|*migration*|migrations/*|db/migrate/*)
+    *route*|*api*|*schema*|*migration*|db/migrate/*)
       return 0 ;;
     *) return 1 ;;
   esac

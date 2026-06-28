@@ -146,7 +146,8 @@ background_json() {
 }
 
 provider_json() {
-  local root="$1" file="$root/.kimiflow/project/VAULT-PROVIDER.json"
+  local root="$1"
+  local file="$root/.kimiflow/project/VAULT-PROVIDER.json"
   # A connected, authenticated Obsidian/Vault MCP in this session is local truth (env only,
   # no network) and supersedes the static per-repo manifest, which provider connect writes
   # without live capabilities. Mirrors the KIMIFLOW_*_MCP_AVAILABLE precedence in
@@ -197,7 +198,8 @@ hooks_json() {
 }
 
 current_state_json() {
-  local run_dir="$1" assessment="$run_dir/CURRENT-STATE.json" recall="$run_dir/CURRENT-STATE.md" out verdict reason
+  local run_dir="$1" out verdict reason
+  local assessment="$run_dir/CURRENT-STATE.json" recall="$run_dir/CURRENT-STATE.md"
   if [ ! -f "$assessment" ]; then
     jq -n '{present: false, verdict: "CLOSED", reason: "assessment_missing"}'
     return 0
@@ -300,7 +302,8 @@ status_json() {
 }
 
 append_audit() {
-  local run_dir="$1" action="$2" status_json="$3" extra="$4" file="$run_dir/AGENTIC-AUDIT.jsonl" tmp
+  local run_dir="$1" action="$2" status_json="$3" extra="$4" tmp
+  local file="$run_dir/AGENTIC-AUDIT.jsonl"
   [ -d "$run_dir" ] || return 1
   [ ! -L "$file" ] || return 1
   tmp="$(mktemp "${file}.tmp.XXXXXX")" || return 1

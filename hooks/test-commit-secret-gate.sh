@@ -238,7 +238,7 @@ deny_nojq  'echo "git commit later"'             "nojq_benign_git_mention_overbl
 allow_nojq 'echo "deploy later"'                 "nojq_nongit_phrase_allowed"                      # AC-1
 
 # no-jq path must ALSO honor `git -C <target>` from outside (fail-closed): process cwd = OUTSIDE
-deny_nojq_at() { out="$(( cd "$3" 2>/dev/null && payload "$1" "$3" | PATH="$NOJQ" "$REALBASH" "$HOOK" ) 2>/dev/null)"; if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "$2"; else fail "$2 (expected DENY, got: ${out:-<empty/allow>})"; fi; }
+deny_nojq_at() { out="$( ( cd "$3" 2>/dev/null && payload "$1" "$3" | PATH="$NOJQ" "$REALBASH" "$HOOK" ) 2>/dev/null)"; if printf '%s' "$out" | grep -q '"permissionDecision":"deny"'; then pass "$2"; else fail "$2 (expected DENY, got: ${out:-<empty/allow>})"; fi; }
 deny_nojq_at "git -C $TREPO commit -m x"         "nojq_gitc_outside_denied"           "$OUTSIDE"   # AC-6
 deny_nojq_at "git -C $TREPO commit -C HEAD -m x" "nojq_gitc_reuse_outside_denied"     "$OUTSIDE"   # AC-6 (reuse -C must not poison the real -C)
 

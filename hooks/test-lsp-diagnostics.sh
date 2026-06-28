@@ -172,7 +172,7 @@ assert_has "$out" "pyright diagnostics" "pyright_label_reported"
 reset_repo
 unmock_tools
 mock_tool diagnostic-tool 1 "should not run"
-out="$((cd "$REPO" && PATH="$BIN:$BASE_PATH" "$SCANNER" --command diagnostic-tool) 2>&1)"
+out="$( (cd "$REPO" && PATH="$BIN:$BASE_PATH" "$SCANNER" --command diagnostic-tool) 2>&1)"
 assert_has "$out" "--command is not accepted" "command_override_rejected"
 assert_hasnt "$out" "[FLAG]" "command_override_no_flag"
 

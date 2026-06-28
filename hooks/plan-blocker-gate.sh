@@ -19,10 +19,9 @@ emit() {
 }
 
 run_dir=""
-pretty=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --pretty) pretty=1; shift ;;
+    --pretty) shift ;;   # accepted, reserved no-op (no pretty-print path implemented)
     -*) shift ;;
     *) [ -z "$run_dir" ] && run_dir="$1"; shift ;;
   esac

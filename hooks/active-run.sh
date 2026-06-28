@@ -356,7 +356,8 @@ next_item_id() {
 }
 
 update_state_status() {
-  local run_dir="$1" status="$2" state="$run_dir/STATE.md" tmp
+  local run_dir="$1" status="$2" tmp
+  local state="$run_dir/STATE.md"
   [ -f "$state" ] || return 0
   tmp="$state.tmp.$$"
   awk -v status="$status" '
@@ -380,7 +381,8 @@ update_state_status() {
 }
 
 update_state_phase7_done() {
-  local run_dir="$1" state="$run_dir/STATE.md" tmp
+  local run_dir="$1" tmp
+  local state="$run_dir/STATE.md"
   [ -f "$state" ] || return 0
   tmp="$state.tmp.$$"
   awk '
@@ -660,7 +662,8 @@ global_metrics_file() {
 }
 
 snapshot_finish_state() {
-  local root="$1" run_dir="$2" snapshot="$3" project="$root/.kimiflow/project" file metrics
+  local root="$1" run_dir="$2" snapshot="$3" file metrics
+  local project="$root/.kimiflow/project"
   mkdir -p "$snapshot/run" || return 1
   if [ -d "$project" ]; then
     cp -Rp "$project" "$snapshot/project"
@@ -687,7 +690,8 @@ snapshot_finish_state() {
 }
 
 restore_finish_state() {
-  local root="$1" run_dir="$2" snapshot="$3" project="$root/.kimiflow/project" file metrics
+  local root="$1" run_dir="$2" snapshot="$3" file metrics
+  local project="$root/.kimiflow/project"
   if [ "$(cat "$snapshot/project.present" 2>/dev/null || printf absent)" = "present" ]; then
     rm -rf "$project"
     mkdir -p "$root/.kimiflow" || return 1

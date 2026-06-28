@@ -404,7 +404,8 @@ hash_text() {
 }
 
 ensure_global_metrics_salt() {
-  local dir="$1" salt_file="$dir/salt" salt old_umask
+  local dir="$1" salt old_umask
+  local salt_file="$dir/salt"
   mkdir -p "$dir" || return 1
   chmod 700 "$dir" 2>/dev/null || true
   if [ ! -f "$salt_file" ]; then
@@ -444,7 +445,8 @@ project_size_bucket() {
 }
 
 run_type_from_state() {
-  local run_dir="$1" state="$run_dir/STATE.md" mode=""
+  local run_dir="$1" mode=""
+  local state="$run_dir/STATE.md"
   if [ -f "$state" ]; then
     mode="$(awk -F': *' '
       {
