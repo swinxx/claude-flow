@@ -1,9 +1,10 @@
-import json, os, tempfile, unittest
+import json, os, shutil, tempfile, unittest
 from memory_router import store
 
 class TestStore(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.d)
 
     def test_atomic_write_creates_file_with_content(self):
         p = os.path.join(self.d, "out.txt")

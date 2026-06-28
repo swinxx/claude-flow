@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Shell syntax (bash -n) — hard gate
         run: |
@@ -79,6 +81,12 @@ jobs:
 
       - name: Codex install smoke-test (structural) — hard gate
         run: bash hooks/smoke-install-codex.sh
+
+      - name: Unit tests (memory-router Python) — hard gate
+        run: bash hooks/test-memory-router-unit.sh
+
+      - name: Parity tests (memory-router) — hard gate
+        run: bash hooks/test-memory-router-parity.sh
 
       - name: ShellCheck (informational)
         run: shellcheck hooks/*.sh || true

@@ -175,4 +175,4 @@ other hooks).
 
 | Site (Bash ref) | Old behavior | New behavior | Reason |
 |---|---|---|---|
-| _(none yet — populated during implementation)_ | | | |
+| `contracts.dumps` numbers | `jq` emits `1` for integer-valued floats (e.g. `1.0 → 1`) and normalizes number precision | Python `json.dumps(1.0)` → `"1.0"` | Must add float/number parity coverage and handling before first numeric-stdout subcommand (metrics/economics) ships; no current foundation path emits non-integer numbers so this is safe to defer |
