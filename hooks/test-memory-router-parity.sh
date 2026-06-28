@@ -35,9 +35,9 @@ for entry in "${CASES[@]}"; do
   label="${entry%%::*}"; argstr="${entry#*::}"
   args=(); [ -n "$argstr" ] && IFS='|' read -r -a args <<< "$argstr"
 
-  o_out="$(bash "$OLD" "${args[@]}" 2>"$WORK/o.err")"; o_code=$?
+  o_out="$(bash "$OLD" ${args[@]+"${args[@]}"} 2>"$WORK/o.err")"; o_code=$?
   o_err="$(normalize < "$WORK/o.err")"
-  n_out="$(python3 "$ROOT/hooks/memory_router" "${args[@]}" 2>"$WORK/n.err")"; n_code=$?
+  n_out="$(python3 "$ROOT/hooks/memory_router" ${args[@]+"${args[@]}"} 2>"$WORK/n.err")"; n_code=$?
   n_err="$(normalize < "$WORK/n.err")"
 
   if [ "$o_code" = "$n_code" ] && [ "$o_out" = "$n_out" ] && [ "$o_err" = "$n_err" ]; then
