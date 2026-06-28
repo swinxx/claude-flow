@@ -10,3 +10,8 @@ def iso_now():
 def date_now():
     # Bash: date -u +"%Y-%m-%d"
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def date_compact():
+    # Bash: date -u +%Y%m%d  (compact YYYYMMDD; used only for the learning-row id)
+    return datetime.now(timezone.utc).strftime("%Y%m%d")

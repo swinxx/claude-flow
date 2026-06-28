@@ -22,6 +22,14 @@ def atomic_write(path, data, mode=0o644, refuse_symlink=True):
         raise
 
 
+def append_line(path, text):
+    # Faithful to Bash `printf '%s\n' "$row" >> "$file"`: append-mode write that
+    # follows an existing symlink (no guard) and creates the file if absent. The
+    # caller is responsible for ensuring the parent directory exists.
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(text)
+
+
 def read_text(path, default=""):
     try:
         with open(path, "r", encoding="utf-8") as handle:
