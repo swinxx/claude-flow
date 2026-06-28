@@ -4,7 +4,13 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+- The Obsidian Vault MCP wizard (`vault-mcp-setup.sh --host claude --write-config`, used by the interactive
+  `vault-mcp-open-terminal.sh` flow) now applies the Claude Code MCP server automatically via `claude mcp add-json`
+  instead of only printing the JSON snippet. It replaces any existing user-scope `obsidian` server — including an
+  older stdio `mcp-obsidian` entry with an inline key — so no stale plaintext token lingers in `~/.claude.json`;
+  the key stays in macOS Keychain and is read at connection time by the headers helper. This brings Claude setup to
+  parity with the existing Codex `--write-config` automation.
 
 ## 0.1.45
 

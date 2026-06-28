@@ -218,6 +218,26 @@ write_codex_config() {
   printf 'Updated Codex config: %s\n' "$config"
 }
 
+write_claude_config() {
+  local mcp_url="$1" helper="$2" json
+  if ! command -v claude >/dev/null 2>&1; then
+    printf 'Claude Code CLI (claude) not found on PATH; add the MCP server JSON shown below manually.\n' >&2
+    return 1
+  fi
+  # headersHelper points Claude at the dynamic header script; make sure it exists.
+  [ -x "$helper" ] || write_headers_helper "$helper"
+  json="$(printf '{"type":"http","url":%s,"headersHelper":%s}' "$(json_string "$mcp_url")" "$(json_string "$helper")")"
+  # Replace any existing obsidian server (e.g. an older stdio mcp-obsidian with an inline key)
+  # so a stale plaintext key cannot linger in ~/.claude.json.
+  claude mcp remove obsidian -s user >/dev/null 2>&1 || true
+  if claude mcp add-json obsidian "$json" -s user >/dev/null 2>&1; then
+    printf 'Updated Claude Code MCP server: obsidian (user scope, no secret in config)\n'
+  else
+    printf 'claude mcp add-json failed; add the MCP server JSON shown below manually.\n' >&2
+    return 1
+  fi
+}
+
 set_launch_env() {
   local token
   command -v launchctl >/dev/null 2>&1 || die "launchctl is required for --set-launch-env" 2
@@ -455,6 +475,11 @@ fi
 
 if [ "$write_config" -eq 1 ] && host_includes codex; then
   write_codex_config "$mcp_url"
+  printf '\n'
+fi
+
+if [ "$write_config" -eq 1 ] && host_includes claude; then
+  write_claude_config "$mcp_url" "$helper"
   printf '\n'
 fi
 

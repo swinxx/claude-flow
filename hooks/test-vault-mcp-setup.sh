@@ -80,6 +80,32 @@ else
   pass "headers_helper_rejects_multiline_token"
 fi
 
+# --- Claude --write-config auto-applies the MCP server via claude mcp add-json (no manual paste) ---
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/claude" <<'EOF'
+#!/usr/bin/env bash
+# Fake claude CLI for tests: record mcp subcommands instead of touching the real config.
+log="${KIMIFLOW_TEST_CLAUDE_LOG:?}"
+printf '%s\n' "$*" >> "$log"
+if [ "${2:-}" = "add-json" ]; then printf '%s' "${4:-}" > "${KIMIFLOW_TEST_CLAUDE_JSON:?}"; fi
+exit 0
+EOF
+chmod +x "$WORK/bin/claude"
+claude_log="$WORK/claude-calls.log"; : > "$claude_log"
+claude_json="$WORK/claude-added.json"
+out="$(OBSIDIAN_API_KEY=fixture-token PATH="$WORK/bin:$PATH" \
+  KIMIFLOW_TEST_CLAUDE_LOG="$claude_log" KIMIFLOW_TEST_CLAUDE_JSON="$claude_json" \
+  "$ROOT/hooks/vault-mcp-setup.sh" --host claude --url https://127.0.0.1:27124 --data-dir "$WORK" --write-config 2>&1)"
+contains "$out" "Updated Claude Code MCP server: obsidian" "setup_writes_claude_mcp_config"
+contains "$(cat "$claude_log")" "mcp add-json obsidian" "setup_claude_invokes_add_json"
+contains "$(cat "$claude_log")" "mcp remove obsidian" "setup_claude_replaces_existing_server"
+contains "$(cat "$claude_json")" '"type":"http"' "setup_claude_json_is_http"
+contains "$(cat "$claude_json")" '"url":"https://127.0.0.1:27124/mcp/"' "setup_claude_json_uses_loopback_mcp_url"
+contains "$(cat "$claude_json")" '"headersHelper":"' "setup_claude_json_uses_headers_helper"
+not_contains "$(cat "$claude_json")" "fixture-token" "setup_claude_json_has_no_secret"
+not_contains "$out" "fixture-token" "setup_claude_config_does_not_echo_token"
+[ -x "$WORK/obsidian-mcp-headers.sh" ] && pass "setup_claude_config_ensures_helper" || fail "setup_claude_config_ensures_helper"
+
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/curl" <<'EOF'
 #!/usr/bin/env bash
