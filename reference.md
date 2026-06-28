@@ -907,6 +907,14 @@ language in the prompt and artifacts. Default/headless is `codebase+architecture
 Combined focuses are allowed (`codebase+architecture+docs`). Do not generate improvement ideas from a
 cold start; first refresh the map sections needed to support them.
 
+**Local workqueue (Slice 3):** the deep-analysis outputs are a local, abarbeitbare Workqueue — not a static
+report. `FINDINGS.md` (open findings) and `IMPROVEMENTS.md` (improvement slices) are surfaced by the launcher
+(`launcher-status.sh` → "open findings" / "open improvement slices") and are picked up by later kimiflow runs:
+a finding routes to a `fix`/feature run, an improvement slice to a `plan`/`build` run, and park/resume keeps
+them visible via `--resume`. `DOCS-PLAN.md` is the `docs`-focus output consumed by a docs run (the launcher
+reports repo-doc presence; it does not list `DOCS-PLAN.md`). Treat an item as done only when its run reaches
+`Status: done`; until then it stays an open work item in `.kimiflow/project/`.
+
 **Storage targets (Slice 3):** `.kimiflow/project/` is always written first and remains the source of
 truth. Additional targets are publishing layers and require an explicit user choice:
 
