@@ -45,7 +45,7 @@ def main(argv):
         return 0
     handler = COMMANDS.get(cmd)
     if handler is None:
-        usage()
+        sys.stderr.write(f"memory-router: unknown command: {cmd}\n")
         return 2
     return handler(argv[1:])
 

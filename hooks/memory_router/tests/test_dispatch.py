@@ -19,10 +19,10 @@ class TestDispatch(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertEqual(err, USAGE)
 
-    def test_unknown_command_prints_usage_exit_2(self):
+    def test_unknown_command_dies_with_message_exit_2(self):
         code, err = self._run(["bogus"])
         self.assertEqual(code, 2)
-        self.assertEqual(err, USAGE)
+        self.assertEqual(err, "memory-router: unknown command: bogus\n")
 
     def test_usage_is_17_lines_and_starts_with_shebang(self):
         lines = USAGE.split("\n")
