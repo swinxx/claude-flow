@@ -3,3 +3,10 @@
 
 # kimiflow run state (local only — never committed)
 .kimiflow/
+
+# Python bytecode (memory_router package)
+__pycache__/
+*.pyc
+
+# Subagent-driven-development scratch (briefs, reports, diffs, ledger — transient)
+.superpowers/
