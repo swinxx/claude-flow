@@ -54,7 +54,14 @@ git diff --stat main HEAD -- hooks/memory-router.sh                             
 
 Each is its own plan via the proven loop (deep-read pinned Bash → ground byte-for-byte → implement → independent senior-reviewer → test → commit docs+feat → ledger). Bash line ranges @ `kimiflow--v0.1.50`:
 
-1. **`recall`** — FTS query over RECALL.sqlite (`recall_index` engine is done) + `terms_json_from_query` (~1570) + writes `RECALL.md`.
+1. **`recall`** — `cmd_recall` (1826-~1990). The biggest remaining read. Deep-read map (already scouted this session):
+   - **Done already (reuse):** `recall_index.fts_query_from_terms` + `fts_hits_json` (Plan 6), `text.word_count_file`, `fts5_available` (= Bash `sqlite_available`).
+   - **NEW helpers to port:**
+     - `terms_json_from_query` (1570-1589): **ASCII-lower** (Bash `tr '[:upper:]'`, NOT `str.lower()` — matters for the non-ASCII fallback) → split on `[^a-z0-9_-]+` → keep `len>=3`, drop stopwords `{the,and,for,mit,und,der,die,das,ein,eine,ist,sind,was,wie,this,that,from,into,zur,zum,auf,von}`, dedup (first occurrence) → first 30 → array; empty → `[ascii_lower(query)]`.
+     - `jsonl_hits` (1591-~1771, **~180 lines of jq — the heavy part**): `field_text($row;$fields)` joins the named fields, `hit($text)` scores by term matches; returns top-`max` ranked rows. Needs careful deep-read + grounding.
+     - `run_artifact_hits_json` (grep its def): run-artifact term matching (reuses `recall_index._iter_run_artifacts`).
+     - `write_recall_markdown` (1772-1794): RECALL.md (`# Recall`, Generated/Query/Terms/Token budget, `## Sources` memory/user/learnings/facts/index/history, `## Explanation` reason_codes+total, `## Omitted`). `recall_json_path_for` (1796-1802): `*.md`→`*.json`. `write_recall_json` (1804-1808): `jq . > path` (pretty).
+   - **`cmd_recall` flow:** args `--root/--query/--query-file/--max(default 5)/--write/--pretty`; `--query-file` → first 120 lines; validate query non-empty + `--max` all-digit; `budget=KIMIFLOW_MEMORY_BUDGET:-900`, `user_budget=KIMIFLOW_USER_MEMORY_BUDGET:-500`; memory/user content via `sed 1,160p`/`1,120p` with `included`/`omitted_over_budget`/`missing` + the `omitted[]` list; learning/fact hits via `jsonl_hits`; index hits via `fts_hits_json`; `index_status` ladder (used / available_no_hits / missing / unavailable); on `--write` write the `.md` + sibling `.json`. Stdout has `Generated`-style nondeterminism inside the file only — the JSON object stdout is timestamp-free EXCEPT the file write embeds `iso_now`; normalize as in record/curate.
 2. **`history`** — RUN-HISTORY.json query/append.
 3. **`metrics`** — incl. `--global`/`--global-purge`: the global-metrics record/purge infra (`ensure_global_metrics_salt`/`hash_text`/project_id) on top of the `global_metrics.py` location helpers from Plan 12.
 4. **`review-run`** + **`verify-run`** — run-artifact review/verify.
