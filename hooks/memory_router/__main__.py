@@ -29,6 +29,7 @@ from . import index as _index
 from . import metrics as _metrics
 from . import recall as _recall
 from . import record as _record
+from . import runs as _runs
 from . import status as _status
 
 COMMANDS = {
@@ -40,6 +41,7 @@ COMMANDS = {
     "recall": _recall.run,
     "record": _record.run,
     "status": _status.run,
+    "verify-run": _runs.run,
 }
 
 if __name__ == "__main__":
