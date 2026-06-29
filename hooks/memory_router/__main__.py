@@ -23,9 +23,11 @@ def main(argv):
 
 
 from . import classify as _classify
+from . import index as _index
 
 COMMANDS = {
     "classify": _classify.run,
+    "index": _index.run,
 }
 
 if __name__ == "__main__":

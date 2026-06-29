@@ -1,4 +1,4 @@
-import json, shutil, subprocess, unittest
+import io, json, shutil, subprocess, unittest
 from memory_router import contracts
 
 def jq(obj, *args):
@@ -25,6 +25,19 @@ class TestContractsParity(unittest.TestCase):
     def test_pretty_matches_jq(self):
         for obj in SAMPLES:
             self.assertEqual(contracts.dumps(obj, pretty=True) + "\n", jq(obj))
+
+
+class TestJsonPrint(unittest.TestCase):
+    def out(self, obj, pretty=False):
+        stream = io.StringIO()
+        contracts.json_print(obj, pretty, stream)
+        return stream.getvalue()
+
+    def test_compact_has_trailing_newline(self):
+        self.assertEqual(self.out({"a": 1}), '{"a":1}\n')
+
+    def test_pretty_has_trailing_newline_and_indent(self):
+        self.assertEqual(self.out({"a": 1}, pretty=True), '{\n  "a": 1\n}\n')
 
 if __name__ == "__main__":
     unittest.main()
