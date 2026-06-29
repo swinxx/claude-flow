@@ -31,6 +31,7 @@ from . import metrics as _metrics
 from . import propose as _propose
 from . import recall as _recall
 from . import record as _record
+from . import review as _review
 from . import runs as _runs
 from . import status as _status
 
@@ -44,6 +45,7 @@ COMMANDS = {
     "propose": _propose.run,
     "recall": _recall.run,
     "record": _record.run,
+    "review-run": _review.run,
     "status": _status.run,
     "verify-run": _runs.run,
 }
