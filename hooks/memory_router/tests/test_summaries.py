@@ -20,6 +20,12 @@ class _FixtureCase(unittest.TestCase):
     def missing(self, name="nope.jsonl"):
         return os.path.join(self.dir, name)
 
+    def write_raw(self, name, text):
+        path = os.path.join(self.dir, name)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return path
+
 
 class ReadJsonlSummaryCase(_FixtureCase):
     EMPTY = {
@@ -120,6 +126,88 @@ class ProposalSummaryCase(_FixtureCase):
             "present", "path", "total", "pending", "approved", "applied",
             "rejected", "needs_revalidation", "by_type",
         ])
+
+
+class UsageSummaryCase(_FixtureCase):
+    PATH = ".kimiflow/project/MEMORY-USAGE.json"
+    ABSENT = {
+        "present": False, "path": PATH, "tracked_items": 0, "total_uses": 0,
+        "last_used_at": None, "by_kind": {}, "events_tracked": 0, "by_event": {},
+        "economics": {
+            "recall_writes": 0, "history_writes": 0, "total_hit_count": 0,
+            "estimated_output_tokens": 0, "last_event_at": None,
+        },
+        "hot_items": 0,
+    }
+
+    def test_missing_file_absent_shape(self):
+        r = summaries.usage_summary_json(self.missing("none.json"))
+        self.assertEqual(r, self.ABSENT)
+        self.assertEqual(list(r.keys()), list(self.ABSENT.keys()))
+        self.assertEqual(list(r["economics"].keys()), list(self.ABSENT["economics"].keys()))
+
+    def test_invalid_json_absent(self):
+        self.assertEqual(summaries.usage_summary_json(self.write_raw("b.json", "not json{")), self.ABSENT)
+
+    def test_literal_null_absent(self):
+        self.assertEqual(summaries.usage_summary_json(self.write_raw("n.json", "null")), self.ABSENT)
+
+    def test_literal_false_absent(self):
+        self.assertEqual(summaries.usage_summary_json(self.write_raw("f.json", "false")), self.ABSENT)
+
+    def test_non_object_json_absent_divergence(self):
+        # Bash jq-errors on `.items` for a non-object top level (empty output, breaks the
+        # caller); the port returns the absent shape instead. Unreachable for real files.
+        self.assertEqual(summaries.usage_summary_json(self.write_raw("a.json", "[1,2,3]")), self.ABSENT)
+
+    def test_empty_object_present_all_zero(self):
+        r = summaries.usage_summary_json(self.write_raw("e.json", "{}"))
+        self.assertTrue(r["present"])
+        self.assertEqual(r["tracked_items"], 0)
+        self.assertEqual(r["by_kind"], {})
+        self.assertEqual(r["economics"]["total_hit_count"], 0)
+
+    def test_items_and_events_null_default_to_empty(self):
+        r = summaries.usage_summary_json(self.write_raw("z.json", '{"items":null,"events":null}'))
+        self.assertTrue(r["present"])
+        self.assertEqual(r["tracked_items"], 0)
+        self.assertEqual(r["events_tracked"], 0)
+
+    def test_full_mixed_aggregation(self):
+        path = self.write_raw("full.json", """
+        {"items":{"learning:a":{"kind":"learning","use_count":3,"last_used_at":"2026-06-10T00:00:00Z"},
+                  "learning:b":{"kind":"learning","use_count":1,"last_used_at":"2026-06-20T00:00:00Z"},
+                  "user:c":{"kind":"user","use_count":0},
+                  "d":{"use_count":5,"last_used_at":"2026-06-01T00:00:00Z"}},
+         "events":[{"kind":"recall","hit_count":2,"estimated_tokens":100,"at":"2026-06-10T00:00:00Z"},
+                   {"kind":"recall","hit_count":3,"estimated_tokens":150,"at":"2026-06-15T00:00:00Z"},
+                   {"kind":"history","hit_count":1,"estimated_tokens":50,"at":"2026-06-12T00:00:00Z"},
+                   {"kind":"recall","hit_count":0,"at":null},
+                   {"hit_count":7,"estimated_tokens":9}]}
+        """)
+        r = summaries.usage_summary_json(path)
+        self.assertEqual(r["tracked_items"], 4)
+        self.assertEqual(r["total_uses"], 9)
+        self.assertEqual(r["last_used_at"], "2026-06-20T00:00:00Z")
+        self.assertEqual(list(r["by_kind"].keys()), ["learning", "user", "unknown"])  # first-appearance
+        self.assertEqual(r["by_kind"], {"learning": 2, "user": 1, "unknown": 1})
+        self.assertEqual(r["events_tracked"], 5)
+        self.assertEqual(list(r["by_event"].keys()), ["recall", "history", "unknown"])
+        self.assertEqual(r["by_event"]["recall"],
+                         {"writes": 3, "hits": 5, "estimated_tokens": 250, "last_at": "2026-06-15T00:00:00Z"})
+        self.assertEqual(r["by_event"]["history"],
+                         {"writes": 1, "hits": 1, "estimated_tokens": 50, "last_at": "2026-06-12T00:00:00Z"})
+        self.assertEqual(r["by_event"]["unknown"],
+                         {"writes": 1, "hits": 7, "estimated_tokens": 9, "last_at": None})
+        self.assertEqual(r["economics"], {
+            "recall_writes": 3, "history_writes": 1, "total_hit_count": 13,
+            "estimated_output_tokens": 309, "last_event_at": "2026-06-15T00:00:00Z",
+        })
+        self.assertEqual(r["hot_items"], 2)   # use_count > 1: a(3), d(5)
+
+    def test_output_key_order(self):
+        r = summaries.usage_summary_json(self.write_raw("e.json", "{}"))
+        self.assertEqual(list(r.keys()), list(self.ABSENT.keys()))
 
 
 if __name__ == "__main__":
