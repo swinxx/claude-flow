@@ -25,12 +25,14 @@ def main(argv):
 from . import classify as _classify
 from . import curate as _curate
 from . import index as _index
+from . import record as _record
 from . import status as _status
 
 COMMANDS = {
     "classify": _classify.run,
     "curate": _curate.run,
     "index": _index.run,
+    "record": _record.run,
     "status": _status.run,
 }
 
