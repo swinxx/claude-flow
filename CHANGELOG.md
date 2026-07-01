@@ -4,6 +4,11 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## 0.1.54
+
+
 Agentic quality upgrade: kimiflow now uses model diversity, test-oracle selection, and independent verification by default where cheap — closing review blind spots when the session model reviews its own family's output.
 
 ### Added
