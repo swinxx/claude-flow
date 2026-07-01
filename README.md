@@ -360,7 +360,7 @@ State is persisted to `.kimiflow/<slug>/` in the target project (resumable). `sm
 `small`/`quick` also run a tiny Current-State Pulse: local-only work records "no external freshness check needed"; changing APIs/tooling/hosts gets one current primary-source check before planning.
 `small`/`quick` also run a tiny Vault Pulse: if Obsidian/Vault direct search is ready, kimiflow looks up the current intent once; if not, it records provider health and continues without blocking.
 
-> **Cost:** a `large` run fans out several subagents (reviewers, implementer, verifier, and optional best-of-N / cross-family reviewer) — expect noticeably higher token use. The scope-gate keeps `trivial` lean, while non-trivial Phase 7 uses a bounded review ensemble over a compact diff packet to avoid repeated full re-reviews.
+> **Cost:** a `large` run fans out several subagents (dual planners, reviewers, implementer, independent verifier, and the offered best-of-2) — expect noticeably higher token use. One review lens per gate routes to a cross-family CLI by default when one is available (opt-out: `.kimiflow/cross-family` = `off`). The scope-gate keeps `trivial` lean, while non-trivial Phase 7 uses a bounded review ensemble over a compact diff packet to avoid repeated full re-reviews.
 
 ## Principles
 
@@ -763,7 +763,7 @@ State wird nach `.kimiflow/<slug>/` im Zielprojekt persistiert (resume-fähig). 
 `small`/`quick` macht außerdem einen winzigen Current-State-Pulse: lokale Arbeit dokumentiert "keine externe Aktualitätsprüfung nötig"; geänderte APIs/Tooling/Hosts bekommen vor dem Plan eine aktuelle Primärquelle.
 `small`/`quick` macht außerdem einen winzigen Vault Pulse: ist Obsidian/Vault-Direktsuche bereit, schaut kimiflow einmal zum aktuellen Intent nach; wenn nicht, wird Provider-Health notiert und ohne Blocker weitergearbeitet.
 
-> **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Reviewer, Implementer, Verifier, optional Best-of-N / Cross-Family-Reviewer) — entsprechend höherer Token-Verbrauch. Das Scope-Gate hält `small` schlank und `trivial` maximal leicht; `small`/`quick` behalten aber den kurzen Micro-Grill.
+> **Kosten:** ein `large`-Run fächert mehrere Subagents auf (Dual-Planner, Reviewer, Implementer, unabhängiger Verifier, optionales Best-of-2) — entsprechend höherer Token-Verbrauch. Eine Review-Lens pro Gate läuft standardmäßig über eine Cross-Family-CLI, wenn eine verfügbar ist (Opt-out: `.kimiflow/cross-family` = `off`). Das Scope-Gate hält `small` schlank und `trivial` maximal leicht; `small`/`quick` behalten aber den kurzen Micro-Grill.
 
 ## Prinzipien
 

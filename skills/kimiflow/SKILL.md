@@ -62,6 +62,7 @@ Apply the canonical Kimiflow workflow from `$KIMIFLOW_PLUGIN_ROOT/SKILL.md` with
   - `Explore` or read-only codebase exploration: use a Codex `explorer` subagent when subagents are available.
   - implementation or fix worker: use a Codex `worker` subagent when useful.
   - planning, review, verification, or general work: use a Codex `default` subagent unless a more specific configured agent exists.
+- Kimiflow's cross-family seats (→ canonical `reference.md` "Model routing (per-role)") use the `claude` CLI on the Codex host: attempt condition `command -v claude`, invocation `claude -p "<prompt>"` (the final message is stdout), same explicit timeouts and sticky same-family fallback rules as on Claude Code.
 - `WebSearch` / `WebFetch` means Codex web/search or another available current-source tool. For current external technical facts, prefer primary sources.
 - `CLAUDE.md` is a Claude project convention file. In Codex, read `AGENTS.md` first, and also read `CLAUDE.md` if it exists because Kimiflow historically treats it as a conventions hint.
 

@@ -4,7 +4,21 @@ Notable changes to **kimiflow**. Versions track `.claude-plugin/plugin.json`.
 
 ## Unreleased
 
-_No unreleased changes._
+Agentic quality upgrade: kimiflow now uses model diversity, test-oracle selection, and independent verification by default where cheap — closing review blind spots when the session model reviews its own family's output.
+
+### Added
+- **Per-role model routing** (`reference.md` "Model routing (per-role)"): session model takes planner/implementer/verification seats, a cross-family CLI takes one review lens per gate, the smallest tier takes narrow read-only lenses; pinned transport (`codex exec --output-last-message` on Claude Code, `claude -p` on Codex), explicit timeouts, sticky same-family fallback, and a project-local `.kimiflow/cross-family` `auto|off` opt-out (also settable via `--settings`).
+- **Dual-plan selection at `large`** (Phase 3): two independent planners with distinct framings (minimal-first vs risk-first, one cross-family when available); selection-first synthesis — the losing approach becomes the recorded "Considered alternatives" entry.
+- **Best-of-2 auto-offer** (pre-build gate): at `large` with a fully test-encoded acceptance set and a cross-family CLI available, the shown pre-build summary offers two candidate implementations in parallel worktrees judged by the test oracle; candidates never commit — the oracle is committed in the main worktree before fan-out and the winning diff goes through the normal commit-gated path.
+- **Additive independent verifier at `large`** (Phase 6): an implementer-blind verifier re-derives the goal-backward sweep and tries to falsify "done" claims; discrepancies are adjudicated by the orchestrator re-running the decisive command — an unverified claim never steers control flow.
+- **Cross-family escalation step** (Phase 5): after two failed fix attempts, the failure evidence goes to a bounded cross-family diagnosis call; its hypothesis is candidate-only.
+- **Refutation requirement** (Phase 7): BLOCKER/HIGH candidates must survive an active refutation attempt before promotion — false blockers no longer burn fix rounds.
+
+### Changed
+- **Cross-family review is now the default, not a knob:** one plan-gate lens and one code-review lens route to a different model family whenever a cross-family CLI is available (scope ≥ `small`); external reviewer output is persisted verbatim as the lens's findings file with an exhaustively defined malformed-retry/fallback path — the fail-closed resolver stays the only grammar authority.
+- **Agent budget disambiguated:** the ~5–10 automatic budget applies per fan-out decision (not cumulatively per run); `large` runs disclose their expected ensemble at the scope announcement and in the pre-build summary's new "Knobs" line.
+- **Resume re-approval:** resuming a `backlog` run into Phase 5 re-presents the pre-build summary when the build-gate is on, so deferred plans get the same approval as direct runs.
+- Scaling-knobs heading reworded (defaults scale with scope); README cost notes updated (EN/DE).
 
 ## 0.1.53
 
